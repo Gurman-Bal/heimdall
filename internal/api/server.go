@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"heimdall/internal/core"
@@ -35,7 +36,7 @@ func (s *Server) Start(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/events", s.handleEvents)
 	mux.HandleFunc("/api/stream", s.handleStream)
-	mux.HandleFunc("GET /api/sources", s.handleListSources)
+	mux.HandleFunc("GET /api/source-types", s.handleSourceTypes)
 	mux.HandleFunc("POST /api/sources", s.handleAddSource)
 	mux.HandleFunc("DELETE /api/sources/{id}", s.handleDeleteSource)
 
@@ -157,4 +158,14 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 	slog.Info("source removed via api", "type", cfg.Type, "path", cfg.Path, "id", id)
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleSourceTypes(w http.ResponseWriter, r *http.Request) {
+	types := make([]string, 0, len(s.sources))
+	for t := range s.sources {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types)
 }

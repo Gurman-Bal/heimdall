@@ -1,12 +1,17 @@
 package truenas
 
 import (
+	"heimdall/internal/ingest"
 	"regexp"
 	"strings"
 	"time"
 
 	"heimdall/internal/core"
 )
+
+func init() {
+	ingest.Register("truenas", ParseLine)
+}
 
 var rules = []struct {
 	pattern  *regexp.Regexp
@@ -19,7 +24,7 @@ var rules = []struct {
 	{regexp.MustCompile(`(?i)\b(denied|refused|error)\b`), "warning", "error"},
 }
 
-func parseLine(line string) core.Event {
+func ParseLine(line string) core.Event {
 	severity, typ := "info", "log"
 
 	for _, r := range rules {

@@ -312,7 +312,6 @@
         <div class="source-list" id="source-list"></div>
         <form class="add-form" id="add-form">
             <select id="source-type">
-                <option value="truenas">truenas</option>
             </select>
             <input type="text" id="source-path" placeholder="/var/log/example.log" required>
             <button type="submit">ADD SOURCE</button>
@@ -410,24 +409,37 @@
     const addForm = document.getElementById('add-form');
     const formError = document.getElementById('form-error');
 
-    async function loadSources() {
-        const res = await fetch('/api/sources?type=truenas');
-        const sources = await res.json() || [];
+    let sourceTypes = [];
 
-        if (sources.length === 0) {
-            sourceList.innerHTML = `<div class="empty-state">no sources configured — add a log path below</div>`;
+    async function loadSourceTypes() {
+        const res = await fetch('/api/source-types');
+        sourceTypes = await res.json() || [];
+        const select = document.getElementById('source-type');
+        select.innerHTML = sourceTypes.map(t => `<option value="${t}">${t}</option>`).join('');
+    }
+
+    async function loadSources() {
+        if (sourceTypes.length === 0) await loadSourceTypes();
+
+        const results = await Promise.all(
+            sourceTypes.map(t => fetch('/api/sources?type=' + t).then(r => r.json()))
+        );
+        const all = results.flat().filter(Boolean);
+
+        if (all.length === 0) {
+            sourceList.innerHTML = `<div class="empty-state">no sources configured — add one below</div>`;
             return;
         }
 
-        sourceList.innerHTML = sources.map(s => `
-      <div class="source-row" data-id="${s.ID}">
-        <div class="source-info">
-          <span class="source-type">${s.Type}</span>
-          <span class="source-path">${escapeHtml(s.Path)}</span>
-        </div>
-        <button class="remove-btn" data-id="${s.ID}">REMOVE</button>
+        sourceList.innerHTML = all.map(s => `
+    <div class="source-row" data-id="${s.ID}">
+      <div class="source-info">
+        <span class="source-type">${s.Type}</span>
+        <span class="source-path">${escapeHtml(s.Path)}</span>
       </div>
-    `).join('');
+      <button class="remove-btn" data-id="${s.ID}">REMOVE</button>
+    </div>
+  `).join('');
 
         sourceList.querySelectorAll('.remove-btn').forEach(btn => {
             btn.addEventListener('click', async () => {
