@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"strconv"
 
@@ -14,8 +15,6 @@ import (
 //go:embed web/*
 var webFS embed.FS
 
-// ManagedSource lets the API add/remove paths on a running plugin without
-// the api package depending on any specific plugin implementation.
 type ManagedSource interface {
 	AddPath(path string)
 	RemovePath(path string)
@@ -24,7 +23,7 @@ type ManagedSource interface {
 type Server struct {
 	bus     *core.EventBus
 	store   *storage.Store
-	sources map[string]ManagedSource // keyed by source type, e.g. "truenas"
+	sources map[string]ManagedSource
 }
 
 func New(bus *core.EventBus, store *storage.Store, sources map[string]ManagedSource) *Server {
@@ -38,6 +37,12 @@ func (s *Server) Start(addr string) error {
 	mux.HandleFunc("GET /api/sources", s.handleListSources)
 	mux.HandleFunc("POST /api/sources", s.handleAddSource)
 	mux.HandleFunc("DELETE /api/sources/{id}", s.handleDeleteSource)
+
+	static, err := fs.Sub(webFS, "web")
+	if err != nil {
+		return fmt.Errorf("failed to load embedded web assets: %w", err)
+	}
+	mux.Handle("/", http.FileServer(http.FS(static)))
 
 	return http.ListenAndServe(addr, mux)
 }
@@ -119,7 +124,7 @@ func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	managed.AddPath(req.Path) // takes effect immediately, no restart
+	managed.AddPath(req.Path)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"id": id, "type": req.Type, "path": req.Path})

@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heimdall</title>
+    <style>
+        :root {
+            --bg: #0B0E14;
+            --panel: #131722;
+            --panel-hover: #171C29;
+            --border: #232838;
+            --text: #C9D1D9;
+            --muted: #6B7280;
+            --info: #4FD1C5;
+            --warning: #F0B429;
+            --critical: #F0555F;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+            font-size: 14px;
+        }
+
+        header {
+            padding: 24px 32px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            padding-bottom: 18px;
+        }
+
+        .wordmark {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .wordmark h1 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+        }
+
+        .wordmark .subtitle {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.05em;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--muted);
+            letter-spacing: 0.05em;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--info);
+            box-shadow: 0 0 8px currentColor;
+            animation: pulse 2.4s ease-in-out infinite;
+        }
+
+        .status-dot.warning { background: var(--warning); color: var(--warning); }
+        .status-dot.critical { background: var(--critical); color: var(--critical); }
+        .status-dot.info { color: var(--info); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .bifrost {
+            height: 2px;
+            width: 100%;
+            background: linear-gradient(90deg, var(--info), var(--info) 40%, var(--border) 40%, var(--border) 60%, var(--border) 100%);
+            transition: background 0.6s ease;
+        }
+        .bifrost.warning { background: linear-gradient(90deg, var(--info), var(--warning) 60%, var(--warning) 100%); }
+        .bifrost.critical { background: linear-gradient(90deg, var(--warning), var(--critical) 70%, var(--critical) 100%); }
+
+        nav {
+            display: flex;
+            gap: 4px;
+            padding-top: 14px;
+        }
+
+        .tab {
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-family: inherit;
+            font-size: 13px;
+            letter-spacing: 0.05em;
+            padding: 8px 4px 10px;
+            margin-right: 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab.active {
+            color: var(--text);
+            border-bottom-color: var(--info);
+        }
+
+        main {
+            padding: 24px 32px 60px;
+            max-width: 1100px;
+        }
+
+        .view { display: none; }
+        .view.active { display: block; }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+        }
+
+        .filters { display: flex; gap: 6px; }
+
+        .filter-btn {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 0.05em;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .filter-btn.active { color: var(--text); border-color: var(--muted); }
+
+        .event-list {
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .event-row {
+            display: grid;
+            grid-template-columns: 90px 70px 90px 120px 1fr;
+            gap: 14px;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12.5px;
+            align-items: center;
+        }
+        .event-row:last-child { border-bottom: none; }
+        .event-row:hover { background: var(--panel-hover); }
+        .event-row.new { animation: flash-in 1.2s ease; }
+
+        @keyframes flash-in {
+            0% { background: rgba(79, 209, 197, 0.12); }
+            100% { background: transparent; }
+        }
+
+        .event-time { color: var(--muted); }
+
+        .badge {
+            display: inline-block;
+            font-size: 10px;
+            letter-spacing: 0.06em;
+            padding: 2px 6px;
+            border-radius: 3px;
+            text-transform: uppercase;
+            width: fit-content;
+        }
+        .badge.info { color: var(--info); background: rgba(79, 209, 197, 0.1); }
+        .badge.warning { color: var(--warning); background: rgba(240, 180, 41, 0.1); }
+        .badge.critical { color: var(--critical); background: rgba(240, 85, 95, 0.1); }
+
+        .event-source { color: var(--muted); }
+        .event-type { color: var(--muted); }
+        .event-message { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .empty-state {
+            padding: 48px 20px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .source-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+
+        .source-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 10px 14px;
+        }
+
+        .source-info { display: flex; align-items: center; gap: 12px; }
+        .source-type { color: var(--info); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+        .source-path { color: var(--text); }
+
+        .remove-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-family: inherit;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .remove-btn:hover { color: var(--critical); border-color: var(--critical); }
+
+        .add-form {
+            display: flex;
+            gap: 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 14px;
+            background: var(--panel);
+        }
+
+        .add-form select, .add-form input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 12.5px;
+            padding: 8px 10px;
+            border-radius: 3px;
+        }
+
+        .add-form input { flex: 1; }
+
+        .add-form button {
+            background: var(--info);
+            border: none;
+            color: var(--bg);
+            font-family: inherit;
+            font-weight: 700;
+            font-size: 12px;
+            letter-spacing: 0.05em;
+            padding: 8px 16px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .add-form button:hover { opacity: 0.85; }
+
+        .form-error {
+            color: var(--critical);
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        ::selection { background: rgba(79, 209, 197, 0.25); }
+
+        button:focus-visible, .filter-btn:focus-visible, .tab:focus-visible {
+            outline: 2px solid var(--info);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-row">
+        <div class="wordmark">
+            <h1>HEIMDALL</h1>
+            <span class="subtitle">watching truenas</span>
+        </div>
+        <div class="status">
+            <span class="status-dot info" id="status-dot"></span>
+            <span id="status-text">nominal</span>
+        </div>
+    </div>
+    <nav>
+        <button class="tab active" data-view="watch">WATCH</button>
+        <button class="tab" data-view="sources">SOURCES</button>
+    </nav>
+</header>
+<div class="bifrost" id="bifrost"></div>
+
+<main>
+    <div class="view active" id="view-watch">
+        <div class="toolbar">
+            <div class="filters">
+                <button class="filter-btn active" data-severity="all">ALL</button>
+                <button class="filter-btn" data-severity="warning">WARNING</button>
+                <button class="filter-btn" data-severity="critical">CRITICAL</button>
+            </div>
+        </div>
+        <div class="event-list" id="event-list"></div>
+    </div>
+
+    <div class="view" id="view-sources">
+        <div class="source-list" id="source-list"></div>
+        <form class="add-form" id="add-form">
+            <select id="source-type">
+                <option value="truenas">truenas</option>
+            </select>
+            <input type="text" id="source-path" placeholder="/var/log/example.log" required>
+            <button type="submit">ADD SOURCE</button>
+        </form>
+        <div class="form-error" id="form-error"></div>
+    </div>
+</main>
+
+<script>
+    let currentFilter = 'all';
+    let events = [];
+
+    const eventList = document.getElementById('event-list');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const bifrost = document.getElementById('bifrost');
+
+    function fmtTime(ts) {
+        const d = new Date(ts);
+        return d.toLocaleTimeString('en-GB', { hour12: false });
+    }
+
+    function renderEvents() {
+        const filtered = currentFilter === 'all'
+            ? events
+            : events.filter(e => e.Severity === currentFilter);
+
+        if (filtered.length === 0) {
+            eventList.innerHTML = `<div class="empty-state">no events${currentFilter !== 'all' ? ' at ' + currentFilter + ' severity' : ' yet — heimdall is watching'}</div>`;
+            return;
+        }
+
+        eventList.innerHTML = filtered.map(e => `
+      <div class="event-row">
+        <span class="event-time">${fmtTime(e.Timestamp)}</span>
+        <span class="badge ${e.Severity}">${e.Severity}</span>
+        <span class="event-source">${e.Source}</span>
+        <span class="event-type">${e.Type}</span>
+        <span class="event-message" title="${escapeHtml(e.Message)}">${escapeHtml(e.Message)}</span>
+      </div>
+    `).join('');
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function updateStatus() {
+        const hasCritical = events.some(e => e.Severity === 'critical');
+        const hasWarning = events.some(e => e.Severity === 'warning');
+        const level = hasCritical ? 'critical' : hasWarning ? 'warning' : 'info';
+        const label = hasCritical ? 'critical events active' : hasWarning ? 'warnings present' : 'nominal';
+
+        statusDot.className = 'status-dot ' + level;
+        statusText.textContent = label;
+        bifrost.className = 'bifrost ' + level;
+    }
+
+    async function loadEvents() {
+        const res = await fetch('/api/events');
+        events = await res.json() || [];
+        renderEvents();
+        updateStatus();
+    }
+
+    function prependEvent(e) {
+        events.unshift(e);
+        if (events.length > 200) events.pop();
+        renderEvents();
+        updateStatus();
+    }
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentFilter = btn.dataset.severity;
+            renderEvents();
+        });
+    });
+
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById('view-' + tab.dataset.view).classList.add('active');
+            if (tab.dataset.view === 'sources') loadSources();
+        });
+    });
+
+    const sourceList = document.getElementById('source-list');
+    const addForm = document.getElementById('add-form');
+    const formError = document.getElementById('form-error');
+
+    async function loadSources() {
+        const res = await fetch('/api/sources?type=truenas');
+        const sources = await res.json() || [];
+
+        if (sources.length === 0) {
+            sourceList.innerHTML = `<div class="empty-state">no sources configured — add a log path below</div>`;
+            return;
+        }
+
+        sourceList.innerHTML = sources.map(s => `
+      <div class="source-row" data-id="${s.ID}">
+        <div class="source-info">
+          <span class="source-type">${s.Type}</span>
+          <span class="source-path">${escapeHtml(s.Path)}</span>
+        </div>
+        <button class="remove-btn" data-id="${s.ID}">REMOVE</button>
+      </div>
+    `).join('');
+
+        sourceList.querySelectorAll('.remove-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                await fetch('/api/sources/' + btn.dataset.id, { method: 'DELETE' });
+                loadSources();
+            });
+        });
+    }
+
+    addForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        formError.textContent = '';
+
+        const type = document.getElementById('source-type').value;
+        const path = document.getElementById('source-path').value.trim();
+        if (!path) return;
+
+        const res = await fetch('/api/sources', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, path })
+        });
+
+        if (!res.ok) {
+            const text = await res.text();
+            formError.textContent = text || 'failed to add source';
+            return;
+        }
+
+        document.getElementById('source-path').value = '';
+        loadSources();
+    });
+
+    function connectStream() {
+        const es = new EventSource('/api/stream');
+        es.onmessage = (msg) => {
+            const e = JSON.parse(msg.data);
+            prependEvent(e);
+        };
+        es.onerror = () => {
+            es.close();
+            setTimeout(connectStream, 3000);
+        };
+    }
+
+    loadEvents();
+    connectStream();
+</script>
+
+</body>
+</html>
