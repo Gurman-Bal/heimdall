@@ -1,0 +1,15 @@
+services:
+  heimdall:
+    build: .
+    container_name: heimdall
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/log:/host/var/log:ro
+      - heimdall-data:/app/data   # for SQLite later
+    environment:
+      - HEIMDALL_LOG_DIR=/host/var/log
+
+volumes:
+  heimdall-data:
