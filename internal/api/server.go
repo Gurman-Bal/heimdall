@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -125,6 +126,7 @@ func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	managed.AddPath(req.Path)
+	slog.Info("source added via api", "type", req.Type, "path", req.Path, "id", id)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"id": id, "type": req.Type, "path": req.Path})
@@ -152,6 +154,7 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 	if managed, ok := s.sources[cfg.Type]; ok {
 		managed.RemovePath(cfg.Path)
 	}
+	slog.Info("source removed via api", "type", cfg.Type, "path", cfg.Path, "id", id)
 
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"log/slog"
 	"sort"
 )
 
@@ -61,6 +62,7 @@ func (s *Store) migrate() error {
 		if err := tx.Commit(); err != nil {
 			return err
 		}
+		slog.Info("migration applied", "version", name)
 	}
 
 	return nil

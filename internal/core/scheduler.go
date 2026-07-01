@@ -1,7 +1,7 @@
 package core
 
 import (
-	"log"
+	"log/slog"
 	"time"
 )
 
@@ -17,6 +17,7 @@ func NewScheduler(bus *EventBus, interval time.Duration) *Scheduler {
 
 func (s *Scheduler) Register(p Plugin) {
 	s.plugins = append(s.plugins, p)
+	slog.Info("plugin registered", "plugin", p.Name())
 }
 
 // Run starts every registered plugin, then polls all of them on a fixed
@@ -24,7 +25,9 @@ func (s *Scheduler) Register(p Plugin) {
 func (s *Scheduler) Run(stop <-chan struct{}) {
 	for _, p := range s.plugins {
 		if err := p.Start(); err != nil {
-			log.Printf("[scheduler] %s failed to start: %v", p.Name(), err)
+			slog.Error("plugin failed to start", "plugin", p.Name(), "error", err)
+		} else {
+			slog.Info("plugin started", "plugin", p.Name())
 		}
 	}
 
@@ -39,7 +42,7 @@ func (s *Scheduler) Run(stop <-chan struct{}) {
 			for _, p := range s.plugins {
 				events, err := p.Poll()
 				if err != nil {
-					log.Printf("[scheduler] %s poll error: %v", p.Name(), err)
+					slog.Error("plugin poll failed", "plugin", p.Name(), "error", err)
 					continue
 				}
 				for _, e := range events {

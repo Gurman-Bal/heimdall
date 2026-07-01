@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,6 +14,9 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
 	logDir := os.Getenv("HEIMDALL_LOG_DIR")
 	if logDir == "" {
 		logDir = "./testlogs"
@@ -25,14 +28,16 @@ func main() {
 
 	store, err := storage.New(dbPath)
 	if err != nil {
-		log.Fatalf("failed to open storage: %v", err)
+		slog.Error("failed to open storage", "error", err)
+		os.Exit(1)
 	}
 	defer store.Close()
+	slog.Info("storage opened", "path", dbPath)
 
-	// seed default sources on first run only
 	existing, err := store.ListSources("truenas")
 	if err != nil {
-		log.Fatalf("failed to load sources: %v", err)
+		slog.Error("failed to load sources", "error", err)
+		os.Exit(1)
 	}
 	if len(existing) == 0 {
 		defaults := []string{
@@ -42,7 +47,9 @@ func main() {
 		}
 		for _, p := range defaults {
 			if _, err := store.AddSource("truenas", p); err != nil {
-				log.Printf("failed to seed source %s: %v", p, err)
+				slog.Error("failed to seed source", "path", p, "error", err)
+			} else {
+				slog.Info("seeded default source", "type", "truenas", "path", p)
 			}
 		}
 		existing, _ = store.ListSources("truenas")
@@ -63,10 +70,10 @@ func main() {
 	go func() {
 		for e := range persistCh {
 			if err := store.SaveEvent(e); err != nil {
-				log.Printf("failed to save event: %v", err)
+				slog.Error("failed to save event", "error", err)
 			}
 			if e.Severity != "info" {
-				log.Printf("[%s] %s/%s: %s", e.Severity, e.Source, e.Type, e.Message)
+				slog.Warn("event detected", "severity", e.Severity, "source", e.Source, "type", e.Type, "message", e.Message)
 			}
 		}
 	}()
@@ -76,9 +83,10 @@ func main() {
 	}
 	srv := api.New(bus, store, sources)
 	go func() {
-		log.Println("heimdall api listening on :8080")
+		slog.Info("api server starting", "addr", ":8080")
 		if err := srv.Start(":8080"); err != nil {
-			log.Fatalf("api server failed: %v", err)
+			slog.Error("api server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -88,8 +96,8 @@ func main() {
 
 	go scheduler.Run(stop)
 
-	log.Printf("heimdall watching: %v", paths)
+	slog.Info("heimdall watching", "path_count", len(paths), "paths", paths)
 	<-sig
-	log.Println("shutting down...")
+	slog.Info("shutting down")
 	close(stop)
 }

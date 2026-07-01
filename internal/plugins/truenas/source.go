@@ -2,6 +2,7 @@ package truenas
 
 import (
 	"bufio"
+	"log/slog"
 	"os"
 	"sync"
 
@@ -39,6 +40,7 @@ func (s *Source) Start() error {
 	defer s.mu.Unlock()
 	for _, st := range s.states {
 		s.seedOffset(st)
+		slog.Info("tailing path", "plugin", "truenas", "path", st.path, "offset", st.offset)
 	}
 	return nil
 }
@@ -62,13 +64,15 @@ func (s *Source) AddPath(path string) {
 
 	for _, st := range s.states {
 		if st.path == path {
-			return // already tracked
+			slog.Warn("path already tracked, ignoring add", "plugin", "truenas", "path", path)
+			return
 		}
 	}
 
 	st := &fileState{path: path}
 	s.seedOffset(st)
 	s.states = append(s.states, st)
+	slog.Info("path added", "plugin", "truenas", "path", path, "offset", st.offset)
 }
 
 // RemovePath stops tailing a file. The saved offset row is left in storage
@@ -80,9 +84,11 @@ func (s *Source) RemovePath(path string) {
 	for i, st := range s.states {
 		if st.path == path {
 			s.states = append(s.states[:i], s.states[i+1:]...)
+			slog.Info("path removed", "plugin", "truenas", "path", path)
 			return
 		}
 	}
+	slog.Warn("path not tracked, ignoring remove", "plugin", "truenas", "path", path)
 }
 
 func (s *Source) Poll() ([]core.Event, error) {
@@ -99,11 +105,13 @@ func (s *Source) Poll() ([]core.Event, error) {
 			continue
 		}
 		if fi.Size() < st.offset {
-			st.offset = 0 // rotated/truncated
+			slog.Warn("file truncated or rotated, resetting offset", "plugin", "truenas", "path", st.path)
+			st.offset = 0
 		}
 
 		lines, newOffset, err := readNewLines(st.path, st.offset)
 		if err != nil {
+			slog.Error("failed to read lines", "plugin", "truenas", "path", st.path, "error", err)
 			continue
 		}
 
