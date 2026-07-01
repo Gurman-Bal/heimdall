@@ -1,7 +1,19 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"heimdall/internal/core"
+	"heimdall/internal/plugins/minecraft"
+)
 
 func main() {
-	fmt.Println("Heimdall is watching...")
+
+	plugins := []core.Plugin{
+		minecraft.New(),
+	}
+
+	for _, p := range plugins {
+		fmt.Println("Loaded:", p.Name())
+	}
 }
