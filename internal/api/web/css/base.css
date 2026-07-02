@@ -1,0 +1,36 @@
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+
+    margin: 0;
+    padding: 0;
+
+    background: var(--bg);
+    color: var(--text);
+
+    font-family:
+            ui-monospace,
+            "SF Mono",
+            "Cascadia Code",
+            "JetBrains Mono",
+            Consolas,
+            monospace;
+
+    font-size: 14px;
+}
+
+::selection {
+    background: rgba(79, 209, 197, 0.25);
+}
+
+button:focus-visible,
+.filter-btn:focus-visible,
+.tab:focus-visible {
+
+    outline: 2px solid var(--info);
+    outline-offset: 2px;
+
+}

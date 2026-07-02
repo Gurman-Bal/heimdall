@@ -1,0 +1,17 @@
+:root {
+
+    --bg: #0B0E14;
+
+    --panel: #131722;
+    --panel-hover: #171C29;
+
+    --border: #232838;
+
+    --text: #C9D1D9;
+    --muted: #6B7280;
+
+    --info: #4FD1C5;
+    --warning: #F0B429;
+    --critical: #F0555F;
+
+}

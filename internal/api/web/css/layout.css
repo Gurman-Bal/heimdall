@@ -1,0 +1,182 @@
+header {
+
+    padding: 24px 32px 0;
+
+    border-bottom:
+            1px solid var(--border);
+
+}
+
+.header-row {
+
+    display: flex;
+
+    align-items: baseline;
+
+    justify-content: space-between;
+
+    padding-bottom: 18px;
+
+}
+
+/*wordmark*/
+
+.wordmark {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 12px;
+
+}
+
+.wordmark h1 {
+
+    margin: 0;
+
+    font-size: 20px;
+
+    font-weight: 700;
+
+    letter-spacing: 0.14em;
+
+}
+
+.wordmark .subtitle {
+
+    color: var(--muted);
+
+    font-size: 12px;
+
+    letter-spacing: 0.05em;
+
+}
+
+/*status*/
+
+.status {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 8px;
+
+    font-size: 12px;
+
+    color: var(--muted);
+
+    letter-spacing: 0.05em;
+
+}
+
+.status-dot {
+
+    width: 8px;
+    height: 8px;
+
+    border-radius: 50%;
+
+    background: var(--info);
+
+    color: var(--info);
+
+    box-shadow: 0 0 8px currentColor;
+
+    animation:
+            pulse
+            2.4s
+            ease-in-out
+            infinite;
+
+}
+
+.status-dot.warning {
+
+    background: var(--warning);
+
+    color: var(--warning);
+
+}
+
+.status-dot.critical {
+
+    background: var(--critical);
+
+    color: var(--critical);
+
+}
+
+.status-dot.info {
+
+    color: var(--info);
+
+}
+
+/*lightbar*/
+
+.bifrost {
+
+    height: 2px;
+
+    width: 100%;
+
+    background:
+            linear-gradient(
+                    90deg,
+                    var(--info),
+                    var(--info) 40%,
+                    var(--border) 40%,
+                    var(--border) 60%,
+                    var(--border) 100%
+            );
+
+    transition:
+            background
+            0.6s
+            ease;
+
+}
+
+.bifrost.warning {
+
+    background:
+            linear-gradient(
+                    90deg,
+                    var(--info),
+                    var(--warning) 60%,
+                    var(--warning) 100%
+            );
+
+}
+
+.bifrost.critical {
+
+    background:
+            linear-gradient(
+                    90deg,
+                    var(--warning),
+                    var(--critical) 70%,
+                    var(--critical) 100%
+            );
+
+}
+
+/*main*/
+
+main {
+
+    padding: 24px 32px 60px;
+
+    max-width: 1100px;
+
+}
+
+.view {
+    display: none;
+}
+
+.view.active {
+    display: block;
+}

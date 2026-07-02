@@ -1,0 +1,180 @@
+.toolbar {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    margin-bottom: 14px;
+
+}
+
+.filters {
+
+    display: flex;
+
+    gap: 6px;
+
+}
+
+/*Buttons*/
+.filter-btn {
+
+    background: var(--panel);
+
+    border: 1px solid var(--border);
+
+    color: var(--muted);
+
+    font-family: inherit;
+
+    font-size: 11px;
+
+    letter-spacing: 0.05em;
+
+    padding: 5px 10px;
+
+    border-radius: 3px;
+
+    cursor: pointer;
+
+}
+
+.filter-btn.active {
+
+    color: var(--text);
+
+    border-color: var(--muted);
+
+}
+
+/*Events*/
+
+.event-list {
+
+    border: 1px solid var(--border);
+
+    border-radius: 4px;
+
+    overflow: hidden;
+
+}
+
+.event-row {
+
+    display: grid;
+
+    grid-template-columns:
+        90px
+        70px
+        90px
+        120px
+        1fr;
+
+    gap: 14px;
+
+    padding: 10px 14px;
+
+    border-bottom: 1px solid var(--border);
+
+    font-size: 12.5px;
+
+    align-items: center;
+
+}
+
+.event-row:last-child {
+    border-bottom: none;
+}
+
+.event-row:hover {
+    background: var(--panel-hover);
+}
+
+.event-row.new {
+    animation: flash-in 1.2s ease;
+}
+
+/*Badges*/
+
+.badge {
+
+    display: inline-block;
+
+    width: fit-content;
+
+    font-size: 10px;
+
+    letter-spacing: 0.06em;
+
+    padding: 2px 6px;
+
+    border-radius: 3px;
+
+    text-transform: uppercase;
+
+}
+
+.badge.info {
+
+    color: var(--info);
+
+    background:
+            rgba(79,209,197,0.1);
+
+}
+
+.badge.warning {
+
+    color: var(--warning);
+
+    background:
+            rgba(240,180,41,0.1);
+
+}
+
+.badge.critical {
+
+    color: var(--critical);
+
+    background:
+            rgba(240,85,95,0.1);
+
+}
+
+/*event fields*/
+
+.event-time,
+.event-source,
+.event-type {
+
+    color: var(--muted);
+
+}
+
+.event-message {
+
+    color: var(--text);
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+
+    white-space: nowrap;
+
+}
+
+/*empty state*/
+
+.empty-state {
+
+    padding: 48px 20px;
+
+    text-align: center;
+
+    color: var(--muted);
+
+    font-size: 13px;
+
+}

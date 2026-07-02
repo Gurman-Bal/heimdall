@@ -1,0 +1,40 @@
+nav {
+
+    display: flex;
+
+    gap: 4px;
+
+    padding-top: 14px;
+
+}
+
+.tab {
+
+    background: none;
+    border: none;
+
+    color: var(--muted);
+
+    font-family: inherit;
+
+    font-size: 13px;
+
+    letter-spacing: 0.05em;
+
+    padding: 8px 4px 10px;
+
+    margin-right: 20px;
+
+    cursor: pointer;
+
+    border-bottom: 2px solid transparent;
+
+}
+
+.tab.active {
+
+    color: var(--text);
+
+    border-bottom-color: var(--info);
+
+}
