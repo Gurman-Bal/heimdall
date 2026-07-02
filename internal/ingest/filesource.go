@@ -14,6 +14,10 @@ type OffsetStore interface {
 	SetOffset(source, path string, offset int64) error
 }
 
+type Classifier interface {
+	Classify(sourceType, message string) (severity, eventType string)
+}
+
 // ParseFunc converts one raw log line into an Event. This is the only thing
 // that differs between source types — everything else is shared.
 type ParseFunc func(line string) core.Event
@@ -30,13 +34,14 @@ type FileSource struct {
 	sourceType string
 	parse      ParseFunc
 	store      OffsetStore
+	classifier Classifier // may be nil — falls back to whatever parse() set
 
 	mu     sync.Mutex
 	states []*fileState
 }
 
-func NewFileSource(sourceType string, paths []string, parse ParseFunc, store OffsetStore) *FileSource {
-	f := &FileSource{sourceType: sourceType, parse: parse, store: store}
+func NewFileSource(sourceType string, paths []string, parse ParseFunc, store OffsetStore, classifier Classifier) *FileSource {
+	f := &FileSource{sourceType: sourceType, parse: parse, store: store, classifier: classifier}
 	for _, p := range paths {
 		f.states = append(f.states, &fileState{path: p})
 	}
@@ -120,7 +125,11 @@ func (f *FileSource) Poll() ([]core.Event, error) {
 		}
 
 		for _, line := range lines {
-			events = append(events, f.parse(line))
+			event := f.parse(line)
+			if f.classifier != nil {
+				event.Severity, event.Type = f.classifier.Classify(f.sourceType, event.Message)
+			}
+			events = append(events, event)
 		}
 		st.offset = newOffset
 

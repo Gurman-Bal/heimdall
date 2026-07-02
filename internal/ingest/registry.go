@@ -19,10 +19,10 @@ func Registered() []string {
 }
 
 // New builds a FileSource for a registered type, or false if unknown.
-func New(sourceType string, paths []string, store OffsetStore) (*FileSource, bool) {
+func New(sourceType string, paths []string, store OffsetStore, classifier Classifier) (*FileSource, bool) {
 	parse, ok := registry[sourceType]
 	if !ok {
 		return nil, false
 	}
-	return NewFileSource(sourceType, paths, parse, store), true
+	return NewFileSource(sourceType, paths, parse, store, classifier), true
 }

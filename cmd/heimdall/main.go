@@ -10,10 +10,69 @@ import (
 	"heimdall/internal/api"
 	"heimdall/internal/core"
 	"heimdall/internal/ingest"
-	_ "heimdall/internal/plugins/minecraft" // blank import = registers itself via init()
+	_ "heimdall/internal/plugins/minecraft"
 	_ "heimdall/internal/plugins/truenas"
 	"heimdall/internal/storage"
 )
+
+type defaultRule struct {
+	pattern   string
+	severity  string
+	eventType string
+}
+
+var defaultRules = map[string][]defaultRule{
+	"truenas": {
+		{`(?i)\b(reallocated sector|pending sector|smart.*fail)\b`, "critical", "smart_warning"},
+		{`(?i)\b(panic|critical|failed|failure)\b`, "critical", "error"},
+		{`(?i)\b(degraded|warn|warning)\b`, "warning", "warning"},
+		{`(?i)\b(denied|refused|error)\b`, "warning", "error"},
+	},
+	"minecraft": {
+		{`(?i)\bOutOfMemoryError\b`, "critical", "crash"},
+		{`(?i)(Exception in server tick loop|server thread/FATAL)`, "critical", "crash"},
+		{`(?i)Can't keep up! Is the server overloaded`, "warning", "tps_warning"},
+		{`(?i)\b(ERROR|Exception)\b`, "warning", "error"},
+		{`(?i)joined the game`, "info", "player_join"},
+		{`(?i)left the game`, "info", "player_leave"},
+	},
+}
+
+func seedDefaultRules(store *storage.Store, sourceType string) {
+	existing, err := store.ListRules(sourceType)
+	if err != nil {
+		slog.Error("failed to check existing rules", "type", sourceType, "error", err)
+		return
+	}
+	if len(existing) > 0 {
+		return // already seeded or user-customized, leave alone
+	}
+
+	for i, r := range defaultRules[sourceType] {
+		priority := (i + 1) * 10
+		if _, err := store.AddRule(sourceType, r.pattern, r.severity, r.eventType, priority); err != nil {
+			slog.Error("failed to seed rule", "type", sourceType, "pattern", r.pattern, "error", err)
+		}
+	}
+	slog.Info("seeded default rules", "type", sourceType, "count", len(defaultRules[sourceType]))
+}
+
+func loadRules(store *storage.Store, engine *core.RuleEngine, sourceType string) {
+	cfgs, err := store.ListRules(sourceType)
+	if err != nil {
+		slog.Error("failed to load rules", "type", sourceType, "error", err)
+		return
+	}
+	defs := make([]core.RuleDef, len(cfgs))
+	for i, c := range cfgs {
+		defs[i] = core.RuleDef{ID: c.ID, Pattern: c.Pattern, Severity: c.Severity, EventType: c.EventType, Priority: c.Priority}
+	}
+	if errs := engine.Load(sourceType, defs); len(errs) > 0 {
+		for _, e := range errs {
+			slog.Error("rule failed to compile", "type", sourceType, "error", e)
+		}
+	}
+}
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
@@ -31,8 +90,6 @@ func main() {
 	defer store.Close()
 	slog.Info("storage opened", "path", dbPath)
 
-	// seed truenas defaults on first run only — minecraft has no sensible
-	// default path, it stays empty until added via the UI
 	logDir := os.Getenv("HEIMDALL_LOG_DIR")
 	if logDir == "" {
 		logDir = "./testlogs"
@@ -45,11 +102,18 @@ func main() {
 		}
 	}
 
+	ruleEngine := core.NewRuleEngine()
+	for sourceType := range defaultRules {
+		seedDefaultRules(store, sourceType)
+	}
+
 	bus := core.NewEventBus()
 	scheduler := core.NewScheduler(bus, 5*time.Second)
 	managed := map[string]api.ManagedSource{}
 
 	for _, sourceType := range ingest.Registered() {
+		loadRules(store, ruleEngine, sourceType)
+
 		cfgs, err := store.ListSources(sourceType)
 		if err != nil {
 			slog.Error("failed to load sources", "type", sourceType, "error", err)
@@ -60,7 +124,7 @@ func main() {
 			paths = append(paths, c.Path)
 		}
 
-		src, ok := ingest.New(sourceType, paths, store)
+		src, ok := ingest.New(sourceType, paths, store, ruleEngine)
 		if !ok {
 			continue
 		}
@@ -81,7 +145,7 @@ func main() {
 		}
 	}()
 
-	srv := api.New(bus, store, managed)
+	srv := api.New(bus, store, managed, ruleEngine)
 	go func() {
 		slog.Info("api server starting", "addr", ":8080")
 		if err := srv.Start(":8080"); err != nil {

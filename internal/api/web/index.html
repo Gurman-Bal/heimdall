@@ -274,6 +274,12 @@
             outline: 2px solid var(--info);
             outline-offset: 2px;
         }
+
+        .rule-pattern {
+            color: var(--text);
+            font-family: monospace;
+            margin-left: 20px;
+        }
     </style>
 </head>
 <body>
@@ -292,6 +298,7 @@
     <nav>
         <button class="tab active" data-view="watch">WATCH</button>
         <button class="tab" data-view="sources">SOURCES</button>
+        <button class="tab" data-view="rules">RULES</button>
     </nav>
 </header>
 <div class="bifrost" id="bifrost"></div>
@@ -317,6 +324,40 @@
             <button type="submit">ADD SOURCE</button>
         </form>
         <div class="form-error" id="form-error"></div>
+    </div>
+
+    <div class="view" id="view-rules">
+        <div class="source-list" id="rule-list"></div>
+
+        <form class="add-form" id="rule-form">
+            <select id="rule-source-type"></select>
+
+            <input
+                    type="text"
+                    id="rule-pattern"
+                    placeholder="regex pattern"
+                    required
+            >
+
+            <select id="rule-severity">
+                <option value="info">info</option>
+                <option value="warning">warning</option>
+                <option value="critical">critical</option>
+            </select>
+
+            <input
+                    type="text"
+                    id="rule-event-type"
+                    placeholder="event type"
+                    required
+            >
+
+            <button type="submit">
+                ADD RULE
+            </button>
+        </form>
+
+        <div class="form-error" id="rule-error"></div>
     </div>
 </main>
 
@@ -405,6 +446,11 @@
                 loadSourceTypes();
                 loadSources();
             }
+
+            if (tab.dataset.view === 'rules') {
+                loadSourceTypes();
+                loadRules();
+            }
         });
     });
 
@@ -413,6 +459,10 @@
     const formError = document.getElementById('form-error');
 
     let sourceTypes = [];
+
+    const ruleList = document.getElementById('rule-list');
+    const ruleForm = document.getElementById('rule-form');
+    const ruleError = document.getElementById('rule-error');
 
     async function loadSourceTypes() {
         const res = await fetch('/api/source-types');
@@ -470,6 +520,93 @@
 
         document.getElementById('source-path').value = '';
         loadSources();
+    });
+
+
+    async function loadRules() {
+        const res = await fetch('/api/rules');
+        const rules = await res.json() || [];
+
+        const select = document.getElementById('rule-source-type');
+        select.innerHTML =
+            sourceTypes
+                .map(t => `<option value="${t}">${t}</option>`)
+                .join('');
+
+        if (rules.length === 0) {
+            ruleList.innerHTML =
+                '<div class="empty-state">no rules configured</div>';
+            return;
+        }
+
+        ruleList.innerHTML = rules.map(r => `
+        <div class="source-row">
+            <div class="source-info">
+                <span class="source-type">${r.SourceType}</span>
+
+                <span class="badge ${r.Severity}">
+                    ${r.Severity}
+                </span>
+
+                <span class="event-type">
+                    ${r.EventType}
+                </span>
+
+                <span class="source-path">
+                    ${escapeHtml(r.Pattern)}
+                </span>
+            </div>
+
+            <button
+                class="remove-btn"
+                data-id="${r.ID}">
+                REMOVE
+            </button>
+        </div>
+    `).join('');
+
+        ruleList.querySelectorAll('.remove-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                await fetch(
+                    '/api/rules/' + btn.dataset.id,
+                    { method: 'DELETE' }
+                );
+
+                loadRules();
+            });
+        });
+    }
+
+    ruleForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        ruleError.textContent = '';
+
+        const body = {
+            type: document.getElementById('rule-source-type').value,
+            pattern: document.getElementById('rule-pattern').value,
+            severity: document.getElementById('rule-severity').value,
+            event_type: document.getElementById('rule-event-type').value,
+            priority: 100
+        };
+
+        const res = await fetch('/api/rules', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!res.ok) {
+            ruleError.textContent = await res.text();
+            return;
+        }
+
+        document.getElementById('rule-pattern').value = '';
+        document.getElementById('rule-event-type').value = '';
+
+        loadRules();
     });
 
     function connectStream() {

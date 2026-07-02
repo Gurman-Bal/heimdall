@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 
@@ -26,10 +27,11 @@ type Server struct {
 	bus     *core.EventBus
 	store   *storage.Store
 	sources map[string]ManagedSource
+	rules   *core.RuleEngine
 }
 
-func New(bus *core.EventBus, store *storage.Store, sources map[string]ManagedSource) *Server {
-	return &Server{bus: bus, store: store, sources: sources}
+func New(bus *core.EventBus, store *storage.Store, sources map[string]ManagedSource, rules *core.RuleEngine) *Server {
+	return &Server{bus: bus, store: store, sources: sources, rules: rules}
 }
 
 func (s *Server) Start(addr string) error {
@@ -40,6 +42,9 @@ func (s *Server) Start(addr string) error {
 	mux.HandleFunc("GET /api/source-types", s.handleSourceTypes)
 	mux.HandleFunc("POST /api/sources", s.handleAddSource)
 	mux.HandleFunc("DELETE /api/sources/{id}", s.handleDeleteSource)
+	mux.HandleFunc("GET /api/rules", s.handleListRules)
+	mux.HandleFunc("POST /api/rules", s.handleAddRule)
+	mux.HandleFunc("DELETE /api/rules/{id}", s.handleDeleteRule)
 
 	static, err := fs.Sub(webFS, "web")
 	if err != nil {
@@ -166,4 +171,93 @@ func (s *Server) handleSourceTypes(w http.ResponseWriter, r *http.Request) {
 	sort.Strings(types)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(types)
+}
+
+func (s *Server) handleListRules(w http.ResponseWriter, r *http.Request) {
+	sourceType := r.URL.Query().Get("type") // empty = all types
+	list, err := s.store.ListRules(sourceType)
+	if err != nil {
+		http.Error(w, "failed to load rules", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
+type addRuleRequest struct {
+	Type      string `json:"type"`
+	Pattern   string `json:"pattern"`
+	Severity  string `json:"severity"`
+	EventType string `json:"event_type"`
+	Priority  int    `json:"priority"`
+}
+
+func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
+	var req addRuleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Type == "" || req.Pattern == "" || req.Severity == "" || req.EventType == "" {
+		http.Error(w, "type, pattern, severity, and event_type are required", http.StatusBadRequest)
+		return
+	}
+	if _, err := regexp.Compile(req.Pattern); err != nil {
+		http.Error(w, fmt.Sprintf("invalid regex pattern: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	id, err := s.store.AddRule(req.Type, req.Pattern, req.Severity, req.EventType, req.Priority)
+	if err != nil {
+		http.Error(w, "failed to save rule", http.StatusInternalServerError)
+		return
+	}
+
+	if errs := s.reloadRules(req.Type); len(errs) > 0 {
+		slog.Warn("rule reload had errors", "type", req.Type, "errors", errs)
+	}
+	slog.Info("rule added via api", "type", req.Type, "pattern", req.Pattern, "id", id)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"id": id})
+}
+
+func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	cfg, err := s.store.GetRule(id)
+	if err != nil {
+		http.Error(w, "rule not found", http.StatusNotFound)
+		return
+	}
+	if err := s.store.RemoveRule(id); err != nil {
+		http.Error(w, "failed to remove rule", http.StatusInternalServerError)
+		return
+	}
+
+	if errs := s.reloadRules(cfg.SourceType); len(errs) > 0 {
+		slog.Warn("rule reload had errors", "type", cfg.SourceType, "errors", errs)
+	}
+	slog.Info("rule removed via api", "type", cfg.SourceType, "id", id)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// reloadRules re-reads a source type's rules from storage and installs them
+// into the live engine, so changes take effect immediately, no restart.
+func (s *Server) reloadRules(sourceType string) []error {
+	cfgs, err := s.store.ListRules(sourceType)
+	if err != nil {
+		return []error{err}
+	}
+	defs := make([]core.RuleDef, len(cfgs))
+	for i, c := range cfgs {
+		defs[i] = core.RuleDef{ID: c.ID, Pattern: c.Pattern, Severity: c.Severity, EventType: c.EventType, Priority: c.Priority}
+	}
+	return s.rules.Load(sourceType, defs)
 }
