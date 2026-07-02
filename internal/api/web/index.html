@@ -401,7 +401,10 @@
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             tab.classList.add('active');
             document.getElementById('view-' + tab.dataset.view).classList.add('active');
-            if (tab.dataset.view === 'sources') loadSources();
+            if (tab.dataset.view === 'sources') {
+                loadSourceTypes();
+                loadSources();
+            }
         });
     });
 
@@ -419,12 +422,8 @@
     }
 
     async function loadSources() {
-        if (sourceTypes.length === 0) await loadSourceTypes();
-
-        const results = await Promise.all(
-            sourceTypes.map(t => fetch('/api/sources?type=' + t).then(r => r.json()))
-        );
-        const all = results.flat().filter(Boolean);
+        const res = await fetch('/api/sources');
+        const all = await res.json() || [];
 
         if (all.length === 0) {
             sourceList.innerHTML = `<div class="empty-state">no sources configured — add one below</div>`;

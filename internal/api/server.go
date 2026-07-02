@@ -36,6 +36,7 @@ func (s *Server) Start(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/events", s.handleEvents)
 	mux.HandleFunc("/api/stream", s.handleStream)
+	mux.HandleFunc("GET /api/sources", s.handleListSources)
 	mux.HandleFunc("GET /api/source-types", s.handleSourceTypes)
 	mux.HandleFunc("POST /api/sources", s.handleAddSource)
 	mux.HandleFunc("DELETE /api/sources/{id}", s.handleDeleteSource)
@@ -84,10 +85,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListSources(w http.ResponseWriter, r *http.Request) {
-	sourceType := r.URL.Query().Get("type")
-	if sourceType == "" {
-		sourceType = "truenas"
-	}
+	sourceType := r.URL.Query().Get("type") // empty = all types, saved or not currently registered
 
 	list, err := s.store.ListSources(sourceType)
 	if err != nil {

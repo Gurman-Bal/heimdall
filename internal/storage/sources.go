@@ -1,6 +1,9 @@
 package storage
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 type SourceConfig struct {
 	ID        int64
@@ -11,16 +14,20 @@ type SourceConfig struct {
 }
 
 func (s *Store) ListSources(sourceType string) ([]SourceConfig, error) {
-	rows, err := s.db.Query(
-		`SELECT id, type, path, enabled, created_at FROM sources WHERE type = ? AND enabled = 1`,
-		sourceType,
-	)
+	var rows *sql.Rows
+	var err error
+
+	if sourceType == "" {
+		rows, err = s.db.Query(`SELECT id, type, path, enabled, created_at FROM sources WHERE enabled = 1`)
+	} else {
+		rows, err = s.db.Query(`SELECT id, type, path, enabled, created_at FROM sources WHERE type = ? AND enabled = 1`, sourceType)
+	}
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var out []SourceConfig
+	out := []SourceConfig{} // explicit empty slice — never nil, so JSON encodes as [] not null
 	for rows.Next() {
 		var c SourceConfig
 		var enabled int
