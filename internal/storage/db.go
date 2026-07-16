@@ -89,3 +89,26 @@ func (s *Store) SetOffset(source, path string, offset int64) error {
 	)
 	return err
 }
+
+// EventsSince returns events at or after the given time, oldest first.
+func (s *Store) EventsSince(since time.Time) ([]core.Event, error) {
+	rows, err := s.db.Query(
+		`SELECT timestamp, source, type, severity, message FROM events WHERE timestamp >= ? ORDER BY id ASC`, since,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []core.Event
+	for rows.Next() {
+		var e core.Event
+		var ts time.Time
+		if err := rows.Scan(&ts, &e.Source, &e.Type, &e.Severity, &e.Message); err != nil {
+			return nil, err
+		}
+		e.Timestamp = ts
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}

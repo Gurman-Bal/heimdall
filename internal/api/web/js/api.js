@@ -53,3 +53,14 @@ export async function removeRule(id) {
         method: "DELETE"
     });
 }
+
+export async function getReports() {
+    return (await fetch("/api/reports")).json();
+}
+
+export async function generateReport() {
+
+    return fetch("/api/reports/generate", {
+        method: "POST"
+    });
+}

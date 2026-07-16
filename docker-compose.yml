@@ -1,15 +1,31 @@
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: heimdall-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    # no ports exposed to the host — only heimdall needs to reach it,
+    # via the internal compose network below
+
   heimdall:
     build: .
     container_name: heimdall
     restart: unless-stopped
+    depends_on:
+      - ollama
     ports:
       - "8080:8080"
     volumes:
       - /var/log:/host/var/log:ro
-      - heimdall-data:/app/data   # for SQLite later
+      - heimdall-data:/app/data
     environment:
       - HEIMDALL_LOG_DIR=/host/var/log
+      - HEIMDALL_DB_PATH=/app/data/heimdall.db
+      - HEIMDALL_OLLAMA_URL=http://ollama:11434
+      - HEIMDALL_LLM_MODEL=qwen2.5:0.5b
+      - HEIMDALL_REPORT_INTERVAL=1h
 
 volumes:
+  ollama-data:
   heimdall-data:

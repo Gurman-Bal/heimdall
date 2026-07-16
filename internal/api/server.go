@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -10,8 +11,10 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"time"
 
 	"heimdall/internal/core"
+	"heimdall/internal/services/reporting"
 	"heimdall/internal/storage"
 )
 
@@ -24,27 +27,34 @@ type ManagedSource interface {
 }
 
 type Server struct {
-	bus     *core.EventBus
-	store   *storage.Store
-	sources map[string]ManagedSource
-	rules   *core.RuleEngine
+	bus      *core.EventBus
+	store    *storage.Store
+	sources  map[string]ManagedSource
+	rules    *core.RuleEngine
+	reporter *reporting.Reporter
 }
 
-func New(bus *core.EventBus, store *storage.Store, sources map[string]ManagedSource, rules *core.RuleEngine) *Server {
-	return &Server{bus: bus, store: store, sources: sources, rules: rules}
+func New(bus *core.EventBus, store *storage.Store, sources map[string]ManagedSource, rules *core.RuleEngine, reporter *reporting.Reporter) *Server {
+	return &Server{bus: bus, store: store, sources: sources, rules: rules, reporter: reporter}
 }
 
 func (s *Server) Start(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/events", s.handleEvents)
 	mux.HandleFunc("/api/stream", s.handleStream)
+
 	mux.HandleFunc("GET /api/sources", s.handleListSources)
 	mux.HandleFunc("GET /api/source-types", s.handleSourceTypes)
 	mux.HandleFunc("POST /api/sources", s.handleAddSource)
 	mux.HandleFunc("DELETE /api/sources/{id}", s.handleDeleteSource)
+
 	mux.HandleFunc("GET /api/rules", s.handleListRules)
 	mux.HandleFunc("POST /api/rules", s.handleAddRule)
 	mux.HandleFunc("DELETE /api/rules/{id}", s.handleDeleteRule)
+
+	mux.HandleFunc("GET /api/reports", s.handleListReports)
+	mux.HandleFunc("GET /api/reports/{id}", s.handleGetReport)
+	mux.HandleFunc("POST /api/reports/generate", s.handleGenerateReport)
 
 	static, err := fs.Sub(webFS, "web")
 	if err != nil {
@@ -55,6 +65,8 @@ func (s *Server) Start(addr string) error {
 	return http.ListenAndServe(addr, mux)
 }
 
+// --- events ---
+
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	events, err := s.store.RecentEvents(200)
 	if err != nil {
@@ -62,7 +74,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(events)
+	err = json.NewEncoder(w).Encode(events)
+	if err != nil {
+		return
+	}
 }
 
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +96,10 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case e := <-ch:
 			data, _ := json.Marshal(e)
-			fmt.Fprintf(w, "data: %s\n\n", data)
+			_, err := fmt.Fprintf(w, "data: %s\n\n", data)
+			if err != nil {
+				return
+			}
 			flusher.Flush()
 		case <-r.Context().Done():
 			return
@@ -89,16 +107,33 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleListSources(w http.ResponseWriter, r *http.Request) {
-	sourceType := r.URL.Query().Get("type") // empty = all types, saved or not currently registered
+// --- sources ---
 
+func (s *Server) handleListSources(w http.ResponseWriter, r *http.Request) {
+	sourceType := r.URL.Query().Get("type") // empty = all types
 	list, err := s.store.ListSources(sourceType)
 	if err != nil {
 		http.Error(w, "failed to load sources", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(list)
+	err = json.NewEncoder(w).Encode(list)
+	if err != nil {
+		return
+	}
+}
+
+func (s *Server) handleSourceTypes(w http.ResponseWriter, r *http.Request) {
+	types := make([]string, 0, len(s.sources))
+	for t := range s.sources {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+	w.Header().Set("Content-Type", "application/json")
+	err := json.NewEncoder(w).Encode(types)
+	if err != nil {
+		return
+	}
 }
 
 type addSourceRequest struct {
@@ -133,12 +168,14 @@ func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
 	slog.Info("source added via api", "type", req.Type, "path", req.Path, "id", id)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"id": id, "type": req.Type, "path": req.Path})
+	err = json.NewEncoder(w).Encode(map[string]any{"id": id, "type": req.Type, "path": req.Path})
+	if err != nil {
+		return
+	}
 }
 
 func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
@@ -163,25 +200,20 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) handleSourceTypes(w http.ResponseWriter, r *http.Request) {
-	types := make([]string, 0, len(s.sources))
-	for t := range s.sources {
-		types = append(types, t)
-	}
-	sort.Strings(types)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(types)
-}
+// --- rules ---
 
 func (s *Server) handleListRules(w http.ResponseWriter, r *http.Request) {
-	sourceType := r.URL.Query().Get("type") // empty = all types
+	sourceType := r.URL.Query().Get("type")
 	list, err := s.store.ListRules(sourceType)
 	if err != nil {
 		http.Error(w, "failed to load rules", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(list)
+	err = json.NewEncoder(w).Encode(list)
+	if err != nil {
+		return
+	}
 }
 
 type addRuleRequest struct {
@@ -219,12 +251,14 @@ func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
 	slog.Info("rule added via api", "type", req.Type, "pattern", req.Pattern, "id", id)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"id": id})
+	err = json.NewEncoder(w).Encode(map[string]any{"id": id})
+	if err != nil {
+		return
+	}
 }
 
 func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
@@ -248,8 +282,6 @@ func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// reloadRules re-reads a source type's rules from storage and installs them
-// into the live engine, so changes take effect immediately, no restart.
 func (s *Server) reloadRules(sourceType string) []error {
 	cfgs, err := s.store.ListRules(sourceType)
 	if err != nil {
@@ -260,4 +292,58 @@ func (s *Server) reloadRules(sourceType string) []error {
 		defs[i] = core.RuleDef{ID: c.ID, Pattern: c.Pattern, Severity: c.Severity, EventType: c.EventType, Priority: c.Priority}
 	}
 	return s.rules.Load(sourceType, defs)
+}
+
+// --- reports ---
+
+func (s *Server) handleListReports(w http.ResponseWriter, r *http.Request) {
+	list, err := s.store.ListReports(50)
+	if err != nil {
+		http.Error(w, "failed to load reports", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(list)
+	if err != nil {
+		return
+	}
+}
+
+func (s *Server) handleGetReport(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	report, err := s.store.GetReport(id)
+	if err != nil {
+		http.Error(w, "report not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(report)
+	if err != nil {
+		return
+	}
+}
+
+func (s *Server) handleGenerateReport(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+
+	id, err := s.reporter.Generate(ctx, time.Hour)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("report generation failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if id == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(map[string]any{"id": id})
+	if err != nil {
+		return
+	}
 }

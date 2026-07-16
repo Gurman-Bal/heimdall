@@ -1,0 +1,5 @@
+07/16/2026 15:42:20 [Server thread/INFO]: Steve joined the game
+07/16/2026 15:42:20 [Server thread/WARN]: Can't keep up! Is the server overloaded? Running 4231ms behind
+07/16/2026 15:42:20 [Server thread/FATAL]: Exception in server tick loop: java.lang.OutOfMemoryError: Java heap space
+07/16/2026 15:42:20 [Server thread/INFO]: Alex left the game
+07/16/2026 15:42:20 [Server thread/INFO]: Saved the game

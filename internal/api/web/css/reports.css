@@ -1,0 +1,46 @@
+.report-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px;
+    margin-bottom: 10px;
+}
+
+.report-header {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+}
+
+.report-summary {
+    color: var(--text);
+}
+
+.issue-row {
+    border-left: 2px solid var(--muted);
+    padding-left: 10px;
+}
+
+.issue-row.warning {
+    border-left-color: var(--warning);
+}
+
+.issue-row.critical {
+    border-left-color: var(--critical);
+}
+
+.issue-title {
+    font-weight: 700;
+}
+
+.issue-explanation {
+    color: var(--text);
+}
+
+.issue-fix {
+    color: var(--muted);
+    font-size: 12px;
+}

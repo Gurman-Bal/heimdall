@@ -1,5 +1,6 @@
 import { initializeSources } from "./views/sources.js";
 import { initializeRules } from "./views/rules.js";
+import { initializeReports } from "./views/reports.js";
 
 export function initializeRouter() {
 
@@ -32,6 +33,10 @@ export function initializeRouter() {
 
                 if (view === "rules") {
                     await initializeRules();
+                }
+
+                if (view === "reports") {
+                    await initializeReports();
                 }
 
             });

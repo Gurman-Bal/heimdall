@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -12,10 +13,10 @@ import (
 	"heimdall/internal/ingest"
 	_ "heimdall/internal/plugins/minecraft"
 	_ "heimdall/internal/plugins/truenas"
+	"heimdall/internal/services/reporting"
 	"heimdall/internal/storage"
 )
 
-// define rule type
 type defaultRule struct {
 	pattern   string
 	severity  string
@@ -46,9 +47,8 @@ func seedDefaultRules(store *storage.Store, sourceType string) {
 		return
 	}
 	if len(existing) > 0 {
-		return // already seeded or user-customized, leave alone
+		return
 	}
-
 	for i, r := range defaultRules[sourceType] {
 		priority := (i + 1) * 10
 		if _, err := store.AddRule(sourceType, r.pattern, r.severity, r.eventType, priority); err != nil {
@@ -146,7 +146,35 @@ func main() {
 		}
 	}()
 
-	srv := api.New(bus, store, managed, ruleEngine)
+	// --- LLM reporting (Ollama) ---
+	reporter := reporting.New(store, bus, reporting.Config{
+		OllamaURL: os.Getenv("HEIMDALL_OLLAMA_URL"),
+		Model:     os.Getenv("HEIMDALL_LLM_MODEL"),
+	})
+
+	reportInterval := 1 * time.Hour
+	if v := os.Getenv("HEIMDALL_REPORT_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			reportInterval = d
+		} else {
+			slog.Warn("invalid HEIMDALL_REPORT_INTERVAL, using default", "value", v, "default", reportInterval)
+		}
+	}
+
+	go func() {
+		ticker := time.NewTicker(reportInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			if _, err := reporter.Generate(ctx, reportInterval); err != nil {
+				slog.Error("scheduled report generation failed", "error", err)
+			}
+			cancel()
+		}
+	}()
+	slog.Info("report generation scheduled", "interval", reportInterval, "ollama_url", os.Getenv("HEIMDALL_OLLAMA_URL"), "model", os.Getenv("HEIMDALL_LLM_MODEL"))
+
+	srv := api.New(bus, store, managed, ruleEngine, reporter)
 	go func() {
 		slog.Info("api server starting", "addr", ":8080")
 		if err := srv.Start(":8080"); err != nil {
