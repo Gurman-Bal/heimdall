@@ -34,7 +34,7 @@ type FileSource struct {
 	sourceType string
 	parse      ParseFunc
 	store      OffsetStore
-	classifier Classifier // may be nil — falls back to whatever parse() set
+	classifier Classifier // may be nil - falls back to whatever parse() set
 
 	mu     sync.Mutex
 	states []*fileState
@@ -146,7 +146,12 @@ func readNewLines(path string, offset int64) ([]string, int64, error) {
 	if err != nil {
 		return nil, offset, err
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+
+		}
+	}(file)
 
 	if _, err := file.Seek(offset, 0); err != nil {
 		return nil, offset, err

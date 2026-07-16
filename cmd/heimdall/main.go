@@ -15,6 +15,7 @@ import (
 	"heimdall/internal/storage"
 )
 
+// define rule type
 type defaultRule struct {
 	pattern   string
 	severity  string

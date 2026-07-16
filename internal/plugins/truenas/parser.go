@@ -13,7 +13,7 @@ func init() {
 }
 
 // ParseLine only extracts the raw event. Severity/Type are filled in by the
-// rule engine after this returns — see main.go's classifier wiring.
+// rule engine after this returns - see main.go's classifier wiring.
 func ParseLine(line string) core.Event {
 	return core.Event{
 		Timestamp: time.Now(),

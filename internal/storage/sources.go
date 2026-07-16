@@ -25,9 +25,14 @@ func (s *Store) ListSources(sourceType string) ([]SourceConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
 
-	out := []SourceConfig{} // explicit empty slice — never nil, so JSON encodes as [] not null
+		}
+	}(rows)
+
+	var out []SourceConfig // explicit empty slice - never nil, so JSON encodes as [] not null
 	for rows.Next() {
 		var c SourceConfig
 		var enabled int

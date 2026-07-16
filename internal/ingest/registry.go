@@ -4,7 +4,7 @@ var registry = map[string]ParseFunc{}
 
 // Register makes a source type available by name. Called from a plugin
 // package's init(), so importing the package for its side effect is enough
-// to make it usable — no other file needs to change.
+// to make it usable - no other file needs to change.
 func Register(sourceType string, parse ParseFunc) {
 	registry[sourceType] = parse
 }
