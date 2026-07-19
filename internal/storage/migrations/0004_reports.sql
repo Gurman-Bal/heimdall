@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS reports (
                                        id           INTEGER PRIMARY KEY AUTOINCREMENT,
                                        generated_at DATETIME NOT NULL,
@@ -8,3 +9,6 @@ CREATE TABLE IF NOT EXISTS reports (
                                        issues_json  TEXT NOT NULL,
                                        model        TEXT NOT NULL
 );
+
+-- +goose Down
+DROP TABLE IF EXISTS reports;

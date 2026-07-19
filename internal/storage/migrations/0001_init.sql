@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS events (
                                       id        INTEGER PRIMARY KEY AUTOINCREMENT,
                                       timestamp DATETIME NOT NULL,
@@ -14,3 +15,7 @@ CREATE TABLE IF NOT EXISTS offsets (
                                        offset INTEGER NOT NULL,
                                        PRIMARY KEY (source, path)
     );
+
+-- +goose Down
+DROP TABLE IF EXISTS offsets;
+DROP TABLE IF EXISTS events;

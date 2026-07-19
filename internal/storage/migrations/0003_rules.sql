@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS rules (
                                      id          INTEGER PRIMARY KEY AUTOINCREMENT,
                                      source_type TEXT NOT NULL,
@@ -9,3 +10,6 @@ CREATE TABLE IF NOT EXISTS rules (
                                      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_rules_source_type ON rules(source_type);
+
+-- +goose Down
+DROP TABLE IF EXISTS rules;

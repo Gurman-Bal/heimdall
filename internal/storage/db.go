@@ -51,7 +51,7 @@ func (s *Store) RecentEvents(limit int) ([]core.Event, error) {
 	}
 	defer rows.Close()
 
-	var events []core.Event
+	events := []core.Event{} // explicit empty slice, not nil — same fix as ListSources/ListRules
 	for rows.Next() {
 		var e core.Event
 		var ts time.Time

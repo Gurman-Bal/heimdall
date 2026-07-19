@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"time"
 )
 
@@ -40,7 +41,7 @@ func (s *Store) ListReports(limit int) ([]ReportRecord, error) {
 	defer func(rows *sql.Rows) {
 		err := rows.Close()
 		if err != nil {
-
+			slog.Error("failed to close rows", "error", err)
 		}
 	}(rows)
 

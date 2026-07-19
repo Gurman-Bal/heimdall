@@ -1,0 +1,16 @@
+run:
+  timeout: 3m
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - unused
+    - ineffassign
+    - gosimple
+
+issues:
+  exclude-dirs:
+    - internal/api/web

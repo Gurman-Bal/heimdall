@@ -199,12 +199,7 @@ func (r *Reporter) callOllama(ctx context.Context, prompt string) (summary strin
 	if err != nil {
 		return "", nil, fmt.Errorf("could not reach ollama at %s: %w", r.cfg.OllamaURL, err)
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-
-		}
-	}(resp.Body)
+	defer resp.Body.Close()
 
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {

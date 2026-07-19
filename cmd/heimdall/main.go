@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"heimdall/internal/api"
+	"heimdall/internal/config"
 	"heimdall/internal/core"
 	"heimdall/internal/ingest"
 	_ "heimdall/internal/plugins/minecraft"
@@ -50,9 +51,8 @@ func seedDefaultRules(store *storage.Store, sourceType string) {
 		return
 	}
 	for i, r := range defaultRules[sourceType] {
-		priority := (i + 1) * 10
-		if _, err := store.AddRule(sourceType, r.pattern, r.severity, r.eventType, priority); err != nil {
-			slog.Error("failed to seed rule", "type", sourceType, "pattern", r.pattern, "error", err)
+		if _, err := store.AddRule(sourceType, r.pattern, r.severity, r.eventType, (i+1)*10); err != nil {
+			slog.Error("failed to seed rule", "type", sourceType, "error", err)
 		}
 	}
 	slog.Info("seeded default rules", "type", sourceType, "count", len(defaultRules[sourceType]))
@@ -78,25 +78,21 @@ func loadRules(store *storage.Store, engine *core.RuleEngine, sourceType string)
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
-	dbPath := os.Getenv("HEIMDALL_DB_PATH")
-	if dbPath == "" {
-		dbPath = "./heimdall.db"
-	}
+	cfg := config.Load()
+	slog.Info("config loaded",
+		"db_path", cfg.DBPath, "log_dir", cfg.DefaultLogDir, "api_addr", cfg.APIAddr,
+		"ollama_url", cfg.OllamaURL, "llm_model", cfg.LLMModel, "report_interval", cfg.ReportInterval)
 
-	store, err := storage.New(dbPath)
+	store, err := storage.New(cfg.DBPath)
 	if err != nil {
 		slog.Error("failed to open storage", "error", err)
 		os.Exit(1)
 	}
 	defer store.Close()
-	slog.Info("storage opened", "path", dbPath)
+	slog.Info("storage opened", "path", cfg.DBPath)
 
-	logDir := os.Getenv("HEIMDALL_LOG_DIR")
-	if logDir == "" {
-		logDir = "./testlogs"
-	}
 	if existing, _ := store.ListSources("truenas"); len(existing) == 0 {
-		for _, p := range []string{logDir + "/messages", logDir + "/auth.log", logDir + "/middlewared.log"} {
+		for _, p := range []string{cfg.DefaultLogDir + "/messages", cfg.DefaultLogDir + "/auth.log", cfg.DefaultLogDir + "/middlewared.log"} {
 			if _, err := store.AddSource("truenas", p); err != nil {
 				slog.Error("failed to seed source", "path", p, "error", err)
 			}
@@ -146,38 +142,28 @@ func main() {
 		}
 	}()
 
-	// --- LLM reporting (Ollama) ---
 	reporter := reporting.New(store, bus, reporting.Config{
-		OllamaURL: os.Getenv("HEIMDALL_OLLAMA_URL"),
-		Model:     os.Getenv("HEIMDALL_LLM_MODEL"),
+		OllamaURL: cfg.OllamaURL,
+		Model:     cfg.LLMModel,
 	})
 
-	reportInterval := 1 * time.Hour
-	if v := os.Getenv("HEIMDALL_REPORT_INTERVAL"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			reportInterval = d
-		} else {
-			slog.Warn("invalid HEIMDALL_REPORT_INTERVAL, using default", "value", v, "default", reportInterval)
-		}
-	}
-
 	go func() {
-		ticker := time.NewTicker(reportInterval)
+		ticker := time.NewTicker(cfg.ReportInterval)
 		defer ticker.Stop()
 		for range ticker.C {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-			if _, err := reporter.Generate(ctx, reportInterval); err != nil {
+			if _, err := reporter.Generate(ctx, cfg.ReportInterval); err != nil {
 				slog.Error("scheduled report generation failed", "error", err)
 			}
 			cancel()
 		}
 	}()
-	slog.Info("report generation scheduled", "interval", reportInterval, "ollama_url", os.Getenv("HEIMDALL_OLLAMA_URL"), "model", os.Getenv("HEIMDALL_LLM_MODEL"))
+	slog.Info("report generation scheduled", "interval", cfg.ReportInterval)
 
 	srv := api.New(bus, store, managed, ruleEngine, reporter)
 	go func() {
-		slog.Info("api server starting", "addr", ":8080")
-		if err := srv.Start(":8080"); err != nil {
+		slog.Info("api server starting", "addr", cfg.APIAddr)
+		if err := srv.Start(cfg.APIAddr); err != nil {
 			slog.Error("api server failed", "error", err)
 			os.Exit(1)
 		}
@@ -186,7 +172,6 @@ func main() {
 	stop := make(chan struct{})
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-
 	go scheduler.Run(stop)
 
 	slog.Info("heimdall started", "registered_types", ingest.Registered())

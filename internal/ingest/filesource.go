@@ -146,12 +146,7 @@ func readNewLines(path string, offset int64) ([]string, int64, error) {
 	if err != nil {
 		return nil, offset, err
 	}
-	defer func(file *os.File) {
-		err := file.Close()
-		if err != nil {
-
-		}
-	}(file)
+	defer file.Close()
 
 	if _, err := file.Seek(offset, 0); err != nil {
 		return nil, offset, err
