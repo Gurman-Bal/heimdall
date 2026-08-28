@@ -2,7 +2,6 @@ package storage
 
 import (
 	"database/sql"
-	"log/slog"
 	"time"
 )
 
@@ -26,14 +25,9 @@ func (s *Store) ListSources(sourceType string) ([]SourceConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
-			slog.Error("failed to close rows", "error", err)
-		}
-	}(rows)
+	defer rows.Close()
 
-	var out []SourceConfig // explicit empty slice - never nil, so JSON encodes as [] not null
+	out := []SourceConfig{}
 	for rows.Next() {
 		var c SourceConfig
 		var enabled int
