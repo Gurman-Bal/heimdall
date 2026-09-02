@@ -18,6 +18,7 @@ services:
       - "8080:8080"
     volumes:
       - /var/log:/host/var/log:ro
+      - /mnt/Minecraft/mc_server/servers/4809472d-3369-4c49-bf8c-8a4e6e3e1bb0/logs:/host/minecraft-logs:ro
       - heimdall-data:/app/data
     environment:
       - HEIMDALL_LOG_DIR=/host/var/log
