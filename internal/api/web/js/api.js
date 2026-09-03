@@ -82,7 +82,13 @@ export async function getActivity(since) {
 }
 
 export async function getSystemStatus() {
-    return (await fetch("/api/system/status")).json();
+    const res = await fetch("/api/system/status");
+
+    if (!res.ok) {
+        return null;
+    }
+
+    return res.json();
 }
 
 export async function getContainers() {
@@ -94,5 +100,17 @@ export async function changePassword(currentPassword, newPassword) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+    });
+}
+
+export async function runCommand(command) {
+    return fetch("/api/system/command", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            command
+        })
     });
 }
