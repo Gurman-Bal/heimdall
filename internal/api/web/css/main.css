@@ -8,3 +8,16 @@
 @import "./reports.css";
 @import "./animations.css";
 @import "./activity.css";
+
+.login-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 14, 20, 0.95);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+}
+.login-overlay.active { display: flex; }

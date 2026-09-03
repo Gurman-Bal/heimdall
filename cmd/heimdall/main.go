@@ -79,14 +79,7 @@ func loadRules(store *storage.Store, engine *core.RuleEngine, sourceType string)
 }
 
 func main() {
-	activityLog := core.NewActivityLog(500)
-	baseHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
-	slog.SetDefault(slog.New(activityLog.Handler(baseHandler)))
-
 	cfg := config.Load()
-	slog.Info("config loaded",
-		"db_path", cfg.DBPath, "log_dir", cfg.DefaultLogDir, "api_addr", cfg.APIAddr,
-		"ollama_url", cfg.OllamaURL, "llm_model", cfg.LLMModel, "report_interval", cfg.ReportInterval)
 
 	store, err := storage.New(cfg.DBPath)
 	if err != nil {
@@ -94,6 +87,16 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
+
+	activityLog := core.NewActivityLog(store, cfg.EventBufferSize)
+	baseHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	slog.SetDefault(slog.New(activityLog.Handler(baseHandler)))
+
+	slog.Info("config loaded",
+		"db_path", cfg.DBPath, "log_dir", cfg.DefaultLogDir, "api_addr", cfg.APIAddr,
+		"ollama_url", cfg.OllamaURL, "llm_model", cfg.LLMModel, "report_interval", cfg.ReportInterval,
+		"event_buffer_size", cfg.EventBufferSize, "batch_size", cfg.BatchSize,
+		"session_timeout", cfg.SessionTimeout, "activity_retention", cfg.ActivityRetention)
 	slog.Info("storage opened", "path", cfg.DBPath)
 
 	authStore, err := auth.Load(store, cfg.AuthUsername, cfg.AuthPassword)
@@ -101,8 +104,9 @@ func main() {
 		slog.Error("failed to load auth", "error", err)
 		os.Exit(1)
 	}
-
+	sessions := auth.NewSessionManager(cfg.SessionTimeout)
 	ctl := dockerctl.New(cfg.ControllableContainers)
+	status := core.NewStatusTracker()
 
 	if existing, _ := store.ListSources("truenas"); len(existing) == 0 {
 		for _, p := range []string{cfg.DefaultLogDir + "/messages", cfg.DefaultLogDir + "/auth.log", cfg.DefaultLogDir + "/middlewared.log"} {
@@ -143,13 +147,16 @@ func main() {
 		slog.Info("source type initialized", "type", sourceType, "path_count", len(paths))
 	}
 
-	persistCh := bus.Subscribe(2000)
+	// Ingestion persistence — configurable buffer absorbs bursts (e.g. a
+	// Minecraft server dumping thousands of boot-time log lines), configurable
+	// batch size/interval controls write throughput to SQLite. Non-info events
+	// are NOT individually logged here anymore — they're visible in the Watch
+	// tab already; duplicating them into Activity was the exact mixing of
+	// "monitored data" and "Heimdall's own operations" we're trying to avoid.
+	persistCh := bus.Subscribe(cfg.EventBufferSize)
 	go func() {
-		const maxBatch = 200
-		const flushInterval = 500 * time.Millisecond
-
-		batch := make([]core.Event, 0, maxBatch)
-		ticker := time.NewTicker(flushInterval)
+		batch := make([]core.Event, 0, cfg.BatchSize)
+		ticker := time.NewTicker(cfg.BatchFlushInterval)
 		defer ticker.Stop()
 
 		flush := func() {
@@ -158,10 +165,18 @@ func main() {
 			}
 			if err := store.SaveEvents(batch); err != nil {
 				slog.Error("failed to save event batch", "count", len(batch), "error", err)
-			}
-			for _, e := range batch {
-				if e.Severity != "info" {
-					slog.Warn("event detected", "severity", e.Severity, "source", e.Source, "type", e.Type, "message", e.Message)
+			} else {
+				warnings, criticals := 0, 0
+				for _, e := range batch {
+					switch e.Severity {
+					case "warning":
+						warnings++
+					case "critical":
+						criticals++
+					}
+				}
+				if warnings+criticals > 0 {
+					slog.Info("event batch flushed", "total", len(batch), "warnings", warnings, "criticals", criticals)
 				}
 			}
 			batch = batch[:0]
@@ -175,12 +190,21 @@ func main() {
 					return
 				}
 				batch = append(batch, e)
-				if len(batch) >= maxBatch {
+				if len(batch) >= cfg.BatchSize {
 					flush()
 				}
 			case <-ticker.C:
 				flush()
 			}
+		}
+	}()
+
+	// Activity log retention — prune anything older than the configured window.
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			activityLog.Prune(cfg.ActivityRetention)
 		}
 	}()
 
@@ -202,7 +226,7 @@ func main() {
 	}()
 	slog.Info("report generation scheduled", "interval", cfg.ReportInterval)
 
-	srv := api.New(bus, store, managed, ruleEngine, reporter, activityLog, authStore, ctl, cfg.SelfContainer)
+	srv := api.New(bus, store, managed, ruleEngine, reporter, activityLog, authStore, sessions, ctl, status, cfg.SelfContainer)
 	go func() {
 		slog.Info("api server starting", "addr", cfg.APIAddr)
 		if err := srv.Start(cfg.APIAddr); err != nil {
@@ -218,6 +242,13 @@ func main() {
 
 	slog.Info("heimdall started", "registered_types", ingest.Registered())
 	<-sig
-	slog.Info("shutting down")
+
+	status.Set("stopping")
+	slog.Warn("shutdown signal received — stopping scheduler")
 	close(stop)
+
+	slog.Warn("allowing final event/activity batches to flush")
+	time.Sleep(1500 * time.Millisecond)
+
+	slog.Warn("shutdown complete")
 }

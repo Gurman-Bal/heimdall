@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
 
-// runCommand implements a strict, closed vocabulary: verb + optional target,
-// both checked against known values. There is no path from here to a shell —
-// anything not matching one of these exact shapes is rejected outright.
+var processStartedAt = time.Now()
+
 func (s *Server) runCommand(ctx context.Context, raw string) error {
 	fields := strings.Fields(strings.ToLower(strings.TrimSpace(raw)))
 	if len(fields) == 0 {
@@ -30,11 +30,24 @@ func (s *Server) runCommand(ctx context.Context, raw string) error {
 
 	switch verb {
 	case "restart":
-		return s.dockerctl.Restart(ctx, target)
+		s.status.Set("restarting")
+		slog.Warn("restart requested", "target", target)
+		err := s.dockerctl.Restart(ctx, target)
+		if err != nil {
+			s.status.Set("running")
+		}
+		return err
 	case "stop", "shutdown":
+		s.status.Set("stopping")
+		slog.Warn("stop requested", "target", target)
 		return s.dockerctl.Stop(ctx, target)
 	case "start":
-		return s.dockerctl.Start(ctx, target)
+		slog.Info("start requested", "target", target)
+		err := s.dockerctl.Start(ctx, target)
+		if err == nil {
+			s.status.Set("running")
+		}
+		return err
 	default:
 		return fmt.Errorf("unknown command %q — allowed: restart, stop, shutdown, start [target]", verb)
 	}
@@ -101,4 +114,38 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
+	types := make([]string, 0, len(s.sources))
+	for t := range s.sources {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+
+	status := map[string]any{
+		"state":            s.status.Get(),
+		"uptime_seconds":   int(time.Since(processStartedAt).Seconds()),
+		"registered_types": types,
+		"events_dropped":   s.bus.DroppedCount(),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
+}
+
+func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
+	since := time.Now().Add(-24 * time.Hour)
+	if v := r.URL.Query().Get("since"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			since = time.Now().Add(-d)
+		}
+	}
+
+	entries, err := s.activityLog.Recent(since, 1000)
+	if err != nil {
+		http.Error(w, "failed to load activity", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
 }

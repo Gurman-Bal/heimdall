@@ -65,16 +65,24 @@ export async function generateReport() {
     });
 }
 
-export async function getActivity() {
-    return (await fetch("/api/activity")).json();
-}
-
-export async function runCommand(command) {
-    return fetch("/api/system/command", {
+export async function login(username, password) {
+    return fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command })
+        body: JSON.stringify({ username, password })
     });
+}
+
+export async function logout() {
+    return fetch("/api/auth/logout", { method: "POST" });
+}
+
+export async function getActivity(since) {
+    return (await fetch(`/api/activity?since=${since || "24h"}`)).json();
+}
+
+export async function getSystemStatus() {
+    return (await fetch("/api/system/status")).json();
 }
 
 export async function getContainers() {

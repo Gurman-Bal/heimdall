@@ -5,8 +5,12 @@ services:
     restart: unless-stopped
     volumes:
       - ollama-data:/root/.ollama
-    # no ports exposed to the host — only heimdall needs to reach it,
-    # via the internal compose network below
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 512m
 
   heimdall:
     build: .
@@ -20,10 +24,6 @@ services:
       - /var/log:/host/var/log:ro
       - /mnt/Minecraft/mc_server/servers/4809472d-3369-4c49-bf8c-8a4e6e3e1bb0/logs:/host/minecraft-logs:ro
       - heimdall-data:/app/data
-      # Docker socket — required for the Ops tab's restart/stop/start buttons.
-      # This grants meaningful power over the host's Docker daemon; only
-      # possible because Heimdall's own auth (HEIMDALL_AUTH_PASS) gates access,
-      # and dockerctl only allows the containers named below, nothing else.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - HEIMDALL_LOG_DIR=/host/var/log
@@ -35,6 +35,16 @@ services:
       - HEIMDALL_AUTH_PASS=${HEIMDALL_AUTH_PASS}
       - HEIMDALL_CONTAINER_NAME=heimdall
       - HEIMDALL_CONTROLLABLE_CONTAINERS=heimdall,heimdall-ollama
+      - HEIMDALL_SESSION_TIMEOUT=30m
+      - HEIMDALL_ACTIVITY_RETENTION=48h
+      - HEIMDALL_EVENT_BUFFER_SIZE=20000
+      - HEIMDALL_BATCH_SIZE=1000
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 128m
 
 volumes:
   ollama-data:

@@ -3,49 +3,98 @@ package core
 import (
 	"context"
 	"log/slog"
-	"sync"
 	"time"
 )
 
 type ActivityEntry struct {
-	Time    time.Time         `json:"time"`
-	Level   string            `json:"level"`
-	Message string            `json:"message"`
-	Attrs   map[string]string `json:"attrs"`
+	Time    time.Time
+	Level   string
+	Message string
+	Attrs   map[string]string
 }
 
-// ActivityLog is a fixed-size ring buffer of Heimdall's own log output,
-// viewable from the dashboard without needing terminal/docker access.
+// ActivityStore is implemented by storage.Store. Defined here as an
+// interface so core never imports storage (storage already imports core
+// for Event — the reverse would be a cycle).
+type ActivityStore interface {
+	SaveActivity(e ActivityEntry) error
+	RecentActivity(since time.Time, limit int) ([]ActivityEntry, error)
+	PruneActivityOlderThan(cutoff time.Time) (int64, error)
+}
+
+// ActivityLog buffers Heimdall's own operational log lines and persists
+// them in small batches, so the Activity tab survives restarts and supports
+// querying a time window (1h/24h/48h) instead of "whatever's in RAM right now".
 type ActivityLog struct {
-	mu      sync.Mutex
-	entries []ActivityEntry
-	max     int
+	ch    chan ActivityEntry
+	store ActivityStore
 }
 
-func NewActivityLog(max int) *ActivityLog {
-	return &ActivityLog{max: max}
+func NewActivityLog(store ActivityStore, bufferSize int) *ActivityLog {
+	a := &ActivityLog{ch: make(chan ActivityEntry, bufferSize), store: store}
+	go a.run()
+	return a
 }
 
-func (a *ActivityLog) add(e ActivityEntry) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.entries = append(a.entries, e)
-	if len(a.entries) > a.max {
-		a.entries = a.entries[len(a.entries)-a.max:]
+func (a *ActivityLog) run() {
+	const maxBatch = 100
+	const flushInterval = time.Second
+
+	batch := make([]ActivityEntry, 0, maxBatch)
+	ticker := time.NewTicker(flushInterval)
+	defer ticker.Stop()
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		for _, e := range batch {
+			if err := a.store.SaveActivity(e); err != nil {
+				// Deliberately not slog.Error here: that would re-enter this
+				// same handler and risk a loop. stderr directly instead.
+				println("failed to save activity record:", err.Error())
+			}
+		}
+		batch = batch[:0]
+	}
+
+	for {
+		select {
+		case e, ok := <-a.ch:
+			if !ok {
+				flush()
+				return
+			}
+			batch = append(batch, e)
+			if len(batch) >= maxBatch {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
 	}
 }
 
-// Recent returns entries oldest-first, newest last, never nil.
-func (a *ActivityLog) Recent() []ActivityEntry {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	out := make([]ActivityEntry, len(a.entries))
-	copy(out, a.entries)
-	return out
+func (a *ActivityLog) add(e ActivityEntry) {
+	select {
+	case a.ch <- e:
+	default:
+		// Activity log entries are diagnostic, not monitored data — fine to
+		// drop under truly extreme load rather than block the caller.
+	}
 }
 
-// Handler wraps an existing slog.Handler, mirroring every record into this
-// ActivityLog in addition to whatever the wrapped handler does (stdout, etc).
+func (a *ActivityLog) Recent(since time.Time, limit int) ([]ActivityEntry, error) {
+	return a.store.RecentActivity(since, limit)
+}
+
+func (a *ActivityLog) Prune(olderThan time.Duration) {
+	cutoff := time.Now().Add(-olderThan)
+	if n, err := a.store.PruneActivityOlderThan(cutoff); err == nil && n > 0 {
+		slog.Info("pruned old activity records", "count", n, "older_than", olderThan)
+	}
+}
+
 func (a *ActivityLog) Handler(wrapped slog.Handler) slog.Handler {
 	return &activityHandler{wrapped: wrapped, log: a}
 }

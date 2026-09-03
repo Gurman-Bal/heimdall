@@ -36,42 +36,53 @@ type Server struct {
 	reporter      *reporting.Reporter
 	activityLog   *core.ActivityLog
 	auth          *auth.Store
+	sessions      *auth.SessionManager
 	dockerctl     *dockerctl.Controller
+	status        *core.StatusTracker
 	selfContainer string
 }
 
 func New(bus *core.EventBus, store *storage.Store, sources map[string]ManagedSource, rules *core.RuleEngine,
-	reporter *reporting.Reporter, activityLog *core.ActivityLog, authStore *auth.Store,
-	ctl *dockerctl.Controller, selfContainer string) *Server {
+	reporter *reporting.Reporter, activityLog *core.ActivityLog, authStore *auth.Store, sessions *auth.SessionManager,
+	ctl *dockerctl.Controller, status *core.StatusTracker, selfContainer string) *Server {
 	return &Server{
 		bus: bus, store: store, sources: sources, rules: rules, reporter: reporter,
-		activityLog: activityLog, auth: authStore, dockerctl: ctl, selfContainer: selfContainer,
+		activityLog: activityLog, auth: authStore, sessions: sessions, dockerctl: ctl,
+		status: status, selfContainer: selfContainer,
 	}
 }
 
 func (s *Server) Start(addr string) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/events", s.handleEvents)
-	mux.HandleFunc("/api/stream", s.handleStream)
 
-	mux.HandleFunc("GET /api/sources", s.handleListSources)
-	mux.HandleFunc("GET /api/source-types", s.handleSourceTypes)
-	mux.HandleFunc("POST /api/sources", s.handleAddSource)
-	mux.HandleFunc("DELETE /api/sources/{id}", s.handleDeleteSource)
+	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 
-	mux.HandleFunc("GET /api/rules", s.handleListRules)
-	mux.HandleFunc("POST /api/rules", s.handleAddRule)
-	mux.HandleFunc("DELETE /api/rules/{id}", s.handleDeleteRule)
+	protected := http.NewServeMux()
+	protected.HandleFunc("/api/events", s.handleEvents)
+	protected.HandleFunc("/api/stream", s.handleStream)
 
-	mux.HandleFunc("GET /api/reports", s.handleListReports)
-	mux.HandleFunc("GET /api/reports/{id}", s.handleGetReport)
-	mux.HandleFunc("POST /api/reports/generate", s.handleGenerateReport)
+	protected.HandleFunc("GET /api/sources", s.handleListSources)
+	protected.HandleFunc("GET /api/source-types", s.handleSourceTypes)
+	protected.HandleFunc("POST /api/sources", s.handleAddSource)
+	protected.HandleFunc("DELETE /api/sources/{id}", s.handleDeleteSource)
 
-	mux.HandleFunc("GET /api/activity", s.handleActivity)
-	mux.HandleFunc("GET /api/system/containers", s.handleListContainers)
-	mux.HandleFunc("POST /api/system/containers/{name}/{action}", s.handleContainerAction)
-	mux.HandleFunc("POST /api/system/command", s.handleSystemCommand)
-	mux.HandleFunc("POST /api/system/password", s.handleChangePassword)
+	protected.HandleFunc("GET /api/rules", s.handleListRules)
+	protected.HandleFunc("POST /api/rules", s.handleAddRule)
+	protected.HandleFunc("DELETE /api/rules/{id}", s.handleDeleteRule)
+
+	protected.HandleFunc("GET /api/reports", s.handleListReports)
+	protected.HandleFunc("GET /api/reports/{id}", s.handleGetReport)
+	protected.HandleFunc("POST /api/reports/generate", s.handleGenerateReport)
+
+	protected.HandleFunc("GET /api/activity", s.handleActivity)
+	protected.HandleFunc("GET /api/system/status", s.handleSystemStatus)
+	protected.HandleFunc("GET /api/system/containers", s.handleListContainers)
+	protected.HandleFunc("POST /api/system/containers/{name}/{action}", s.handleContainerAction)
+	protected.HandleFunc("POST /api/system/command", s.handleSystemCommand)
+	protected.HandleFunc("POST /api/system/password", s.handleChangePassword)
+
+	mux.Handle("/api/", s.requireSession(protected))
 
 	static, err := fs.Sub(webFS, "web")
 	if err != nil {
@@ -79,13 +90,7 @@ func (s *Server) Start(addr string) error {
 	}
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
-	return http.ListenAndServe(addr, basicAuth(s.auth, mux))
-}
-
-func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
-	entries := s.activityLog.Recent()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(entries)
+	return http.ListenAndServe(addr, mux)
 }
 
 // --- events ---
