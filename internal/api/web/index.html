@@ -68,6 +68,8 @@
                 data-view="reports">
             REPORTS
         </button>
+        <button class="tab" data-view="activity">ACTIVITY</button>
+        <button class="tab" data-view="ops">OPS</button>
     </nav>
 </header>
 
@@ -215,6 +217,29 @@
                 class="form-error"
                 id="report-error">
         </div>
+
+    </div>
+
+    <div class="view" id="view-activity">
+        <div class="event-list" id="activity-list"></div>
+    </div>
+
+    <div class="view" id="view-ops">
+
+        <div id="container-buttons"></div>
+
+        <form class="add-form" id="command-form" style="margin-top: 16px;">
+            <input id="command-input" placeholder="restart, shutdown, restart ollama..." required>
+            <button>RUN</button>
+        </form>
+        <div class="form-error" id="command-error"></div>
+
+        <form class="add-form" id="password-form" style="margin-top: 20px;">
+            <input type="password" id="current-password" placeholder="current password" required>
+            <input type="password" id="new-password" placeholder="new password" required>
+            <button>CHANGE PASSWORD</button>
+        </form>
+        <div class="form-error" id="password-error"></div>
 
     </div>
 

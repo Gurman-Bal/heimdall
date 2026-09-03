@@ -13,7 +13,9 @@ import (
 	"strconv"
 	"time"
 
+	"heimdall/internal/auth"
 	"heimdall/internal/core"
+	"heimdall/internal/services/dockerctl"
 	"heimdall/internal/services/reporting"
 	"heimdall/internal/storage"
 )
@@ -27,15 +29,24 @@ type ManagedSource interface {
 }
 
 type Server struct {
-	bus      *core.EventBus
-	store    *storage.Store
-	sources  map[string]ManagedSource
-	rules    *core.RuleEngine
-	reporter *reporting.Reporter
+	bus           *core.EventBus
+	store         *storage.Store
+	sources       map[string]ManagedSource
+	rules         *core.RuleEngine
+	reporter      *reporting.Reporter
+	activityLog   *core.ActivityLog
+	auth          *auth.Store
+	dockerctl     *dockerctl.Controller
+	selfContainer string
 }
 
-func New(bus *core.EventBus, store *storage.Store, sources map[string]ManagedSource, rules *core.RuleEngine, reporter *reporting.Reporter) *Server {
-	return &Server{bus: bus, store: store, sources: sources, rules: rules, reporter: reporter}
+func New(bus *core.EventBus, store *storage.Store, sources map[string]ManagedSource, rules *core.RuleEngine,
+	reporter *reporting.Reporter, activityLog *core.ActivityLog, authStore *auth.Store,
+	ctl *dockerctl.Controller, selfContainer string) *Server {
+	return &Server{
+		bus: bus, store: store, sources: sources, rules: rules, reporter: reporter,
+		activityLog: activityLog, auth: authStore, dockerctl: ctl, selfContainer: selfContainer,
+	}
 }
 
 func (s *Server) Start(addr string) error {
@@ -56,13 +67,25 @@ func (s *Server) Start(addr string) error {
 	mux.HandleFunc("GET /api/reports/{id}", s.handleGetReport)
 	mux.HandleFunc("POST /api/reports/generate", s.handleGenerateReport)
 
+	mux.HandleFunc("GET /api/activity", s.handleActivity)
+	mux.HandleFunc("GET /api/system/containers", s.handleListContainers)
+	mux.HandleFunc("POST /api/system/containers/{name}/{action}", s.handleContainerAction)
+	mux.HandleFunc("POST /api/system/command", s.handleSystemCommand)
+	mux.HandleFunc("POST /api/system/password", s.handleChangePassword)
+
 	static, err := fs.Sub(webFS, "web")
 	if err != nil {
 		return fmt.Errorf("failed to load embedded web assets: %w", err)
 	}
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
-	return http.ListenAndServe(addr, mux)
+	return http.ListenAndServe(addr, basicAuth(s.auth, mux))
+}
+
+func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
+	entries := s.activityLog.Recent()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
 }
 
 // --- events ---
@@ -74,10 +97,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(events)
-	if err != nil {
-		return
-	}
+	json.NewEncoder(w).Encode(events)
 }
 
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
@@ -96,8 +116,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case e := <-ch:
 			data, _ := json.Marshal(e)
-			_, err := fmt.Fprintf(w, "data: %s\n\n", data)
-			if err != nil {
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 				return
 			}
 			flusher.Flush()
@@ -110,17 +129,14 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 // --- sources ---
 
 func (s *Server) handleListSources(w http.ResponseWriter, r *http.Request) {
-	sourceType := r.URL.Query().Get("type") // empty = all types
+	sourceType := r.URL.Query().Get("type")
 	list, err := s.store.ListSources(sourceType)
 	if err != nil {
 		http.Error(w, "failed to load sources", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(list)
-	if err != nil {
-		return
-	}
+	json.NewEncoder(w).Encode(list)
 }
 
 func (s *Server) handleSourceTypes(w http.ResponseWriter, r *http.Request) {
@@ -130,10 +146,7 @@ func (s *Server) handleSourceTypes(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(types)
 	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(types)
-	if err != nil {
-		return
-	}
+	json.NewEncoder(w).Encode(types)
 }
 
 type addSourceRequest struct {
@@ -168,10 +181,7 @@ func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
 	slog.Info("source added via api", "type", req.Type, "path", req.Path, "id", id)
 
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(map[string]any{"id": id, "type": req.Type, "path": req.Path})
-	if err != nil {
-		return
-	}
+	json.NewEncoder(w).Encode(map[string]any{"id": id, "type": req.Type, "path": req.Path})
 }
 
 func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
@@ -210,10 +220,7 @@ func (s *Server) handleListRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(list)
-	if err != nil {
-		return
-	}
+	json.NewEncoder(w).Encode(list)
 }
 
 type addRuleRequest struct {
@@ -251,10 +258,7 @@ func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
 	slog.Info("rule added via api", "type", req.Type, "pattern", req.Pattern, "id", id)
 
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(map[string]any{"id": id})
-	if err != nil {
-		return
-	}
+	json.NewEncoder(w).Encode(map[string]any{"id": id})
 }
 
 func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
@@ -303,10 +307,7 @@ func (s *Server) handleListReports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(list)
-	if err != nil {
-		return
-	}
+	json.NewEncoder(w).Encode(list)
 }
 
 func (s *Server) handleGetReport(w http.ResponseWriter, r *http.Request) {
@@ -321,10 +322,7 @@ func (s *Server) handleGetReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(report)
-	if err != nil {
-		return
-	}
+	json.NewEncoder(w).Encode(report)
 }
 
 func (s *Server) handleGenerateReport(w http.ResponseWriter, r *http.Request) {
@@ -342,8 +340,5 @@ func (s *Server) handleGenerateReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(map[string]any{"id": id})
-	if err != nil {
-		return
-	}
+	json.NewEncoder(w).Encode(map[string]any{"id": id})
 }

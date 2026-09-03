@@ -112,3 +112,30 @@ func (s *Store) EventsSince(since time.Time) ([]core.Event, error) {
 	}
 	return events, rows.Err()
 }
+
+func (s *Store) SaveEvents(events []core.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare(`INSERT INTO events (timestamp, source, type, severity, message) VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+
+	for _, e := range events {
+		if _, err := stmt.Exec(e.Timestamp, e.Source, e.Type, e.Severity, e.Message); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit()
+}

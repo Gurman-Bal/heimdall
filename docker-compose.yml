@@ -20,12 +20,21 @@ services:
       - /var/log:/host/var/log:ro
       - /mnt/Minecraft/mc_server/servers/4809472d-3369-4c49-bf8c-8a4e6e3e1bb0/logs:/host/minecraft-logs:ro
       - heimdall-data:/app/data
+      # Docker socket — required for the Ops tab's restart/stop/start buttons.
+      # This grants meaningful power over the host's Docker daemon; only
+      # possible because Heimdall's own auth (HEIMDALL_AUTH_PASS) gates access,
+      # and dockerctl only allows the containers named below, nothing else.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - HEIMDALL_LOG_DIR=/host/var/log
       - HEIMDALL_DB_PATH=/app/data/heimdall.db
       - HEIMDALL_OLLAMA_URL=http://ollama:11434
       - HEIMDALL_LLM_MODEL=qwen2.5:0.5b
       - HEIMDALL_REPORT_INTERVAL=1h
+      - HEIMDALL_AUTH_USER=${HEIMDALL_AUTH_USER:-admin}
+      - HEIMDALL_AUTH_PASS=${HEIMDALL_AUTH_PASS}
+      - HEIMDALL_CONTAINER_NAME=heimdall
+      - HEIMDALL_CONTROLLABLE_CONTAINERS=heimdall,heimdall-ollama
 
 volumes:
   ollama-data:

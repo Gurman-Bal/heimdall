@@ -3,18 +3,23 @@ package config
 import (
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	DBPath         string
-	DefaultLogDir  string
-	APIAddr        string
-	OllamaURL      string
-	LLMModel       string
-	ReportInterval time.Duration
+	DBPath                 string
+	DefaultLogDir          string
+	APIAddr                string
+	OllamaURL              string
+	LLMModel               string
+	ReportInterval         time.Duration
+	AuthUsername           string
+	AuthPassword           string
+	SelfContainer          string
+	ControllableContainers []string
 }
 
 func Load() Config {
@@ -29,6 +34,11 @@ func Load() Config {
 		OllamaURL:     getEnv("HEIMDALL_OLLAMA_URL", "http://localhost:11434"),
 		LLMModel:      getEnv("HEIMDALL_LLM_MODEL", "qwen2.5:0.5b"),
 	}
+
+	cfg.AuthUsername = getEnv("HEIMDALL_AUTH_USER", "admin")
+	cfg.AuthPassword = getEnv("HEIMDALL_AUTH_PASS", "")
+	cfg.SelfContainer = getEnv("HEIMDALL_CONTAINER_NAME", "heimdall")
+	cfg.ControllableContainers = strings.Split(getEnv("HEIMDALL_CONTROLLABLE_CONTAINERS", "heimdall,heimdall-ollama"), ",")
 
 	interval := getEnv("HEIMDALL_REPORT_INTERVAL", "1h")
 	d, err := time.ParseDuration(interval)

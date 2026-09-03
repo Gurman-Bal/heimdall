@@ -64,3 +64,27 @@ export async function generateReport() {
         method: "POST"
     });
 }
+
+export async function getActivity() {
+    return (await fetch("/api/activity")).json();
+}
+
+export async function runCommand(command) {
+    return fetch("/api/system/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command })
+    });
+}
+
+export async function getContainers() {
+    return (await fetch("/api/system/containers")).json();
+}
+
+export async function changePassword(currentPassword, newPassword) {
+    return fetch("/api/system/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+    });
+}

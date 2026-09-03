@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"heimdall/internal/api"
+	"heimdall/internal/auth"
 	"heimdall/internal/config"
 	"heimdall/internal/core"
 	"heimdall/internal/ingest"
 	_ "heimdall/internal/plugins/minecraft"
 	_ "heimdall/internal/plugins/truenas"
+	"heimdall/internal/services/dockerctl"
 	"heimdall/internal/services/reporting"
 	"heimdall/internal/storage"
 )
@@ -35,6 +37,7 @@ var defaultRules = map[string][]defaultRule{
 		{`(?i)\bOutOfMemoryError\b`, "critical", "crash"},
 		{`(?i)(Exception in server tick loop|server thread/FATAL)`, "critical", "crash"},
 		{`(?i)Can't keep up! Is the server overloaded`, "warning", "tps_warning"},
+		{`(?i)Lithium Class Analysis Error`, "info", "lithium_noise"},
 		{`(?i)\b(ERROR|Exception)\b`, "warning", "error"},
 		{`(?i)joined the game`, "info", "player_join"},
 		{`(?i)left the game`, "info", "player_leave"},
@@ -76,7 +79,9 @@ func loadRules(store *storage.Store, engine *core.RuleEngine, sourceType string)
 }
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	activityLog := core.NewActivityLog(500)
+	baseHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	slog.SetDefault(slog.New(activityLog.Handler(baseHandler)))
 
 	cfg := config.Load()
 	slog.Info("config loaded",
@@ -90,6 +95,14 @@ func main() {
 	}
 	defer store.Close()
 	slog.Info("storage opened", "path", cfg.DBPath)
+
+	authStore, err := auth.Load(store, cfg.AuthUsername, cfg.AuthPassword)
+	if err != nil {
+		slog.Error("failed to load auth", "error", err)
+		os.Exit(1)
+	}
+
+	ctl := dockerctl.New(cfg.ControllableContainers)
 
 	if existing, _ := store.ListSources("truenas"); len(existing) == 0 {
 		for _, p := range []string{cfg.DefaultLogDir + "/messages", cfg.DefaultLogDir + "/auth.log", cfg.DefaultLogDir + "/middlewared.log"} {
@@ -130,14 +143,43 @@ func main() {
 		slog.Info("source type initialized", "type", sourceType, "path_count", len(paths))
 	}
 
-	persistCh := bus.Subscribe(100)
+	persistCh := bus.Subscribe(2000)
 	go func() {
-		for e := range persistCh {
-			if err := store.SaveEvent(e); err != nil {
-				slog.Error("failed to save event", "error", err)
+		const maxBatch = 200
+		const flushInterval = 500 * time.Millisecond
+
+		batch := make([]core.Event, 0, maxBatch)
+		ticker := time.NewTicker(flushInterval)
+		defer ticker.Stop()
+
+		flush := func() {
+			if len(batch) == 0 {
+				return
 			}
-			if e.Severity != "info" {
-				slog.Warn("event detected", "severity", e.Severity, "source", e.Source, "type", e.Type, "message", e.Message)
+			if err := store.SaveEvents(batch); err != nil {
+				slog.Error("failed to save event batch", "count", len(batch), "error", err)
+			}
+			for _, e := range batch {
+				if e.Severity != "info" {
+					slog.Warn("event detected", "severity", e.Severity, "source", e.Source, "type", e.Type, "message", e.Message)
+				}
+			}
+			batch = batch[:0]
+		}
+
+		for {
+			select {
+			case e, ok := <-persistCh:
+				if !ok {
+					flush()
+					return
+				}
+				batch = append(batch, e)
+				if len(batch) >= maxBatch {
+					flush()
+				}
+			case <-ticker.C:
+				flush()
 			}
 		}
 	}()
@@ -160,7 +202,7 @@ func main() {
 	}()
 	slog.Info("report generation scheduled", "interval", cfg.ReportInterval)
 
-	srv := api.New(bus, store, managed, ruleEngine, reporter)
+	srv := api.New(bus, store, managed, ruleEngine, reporter, activityLog, authStore, ctl, cfg.SelfContainer)
 	go func() {
 		slog.Info("api server starting", "addr", cfg.APIAddr)
 		if err := srv.Start(cfg.APIAddr); err != nil {
