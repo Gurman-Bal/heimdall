@@ -10,10 +10,14 @@ import (
 
 func init() {
 	ingest.Register("truenas", ParseLine)
+	ingest.RegisterDefaultRules("truenas", []ingest.DefaultRule{
+		{Pattern: `(?i)\b(reallocated sector|pending sector|smart.*fail)\b`, Severity: "critical", EventType: "smart_warning"},
+		{Pattern: `(?i)\b(panic|critical|failed|failure)\b`, Severity: "critical", EventType: "error"},
+		{Pattern: `(?i)\b(degraded|warn|warning)\b`, Severity: "warning", EventType: "warning"},
+		{Pattern: `(?i)\b(denied|refused|error)\b`, Severity: "warning", EventType: "error"},
+	})
 }
 
-// ParseLine only extracts the raw event. Severity/Type are filled in by the
-// rule engine after this returns - see main.go's classifier wiring.
 func ParseLine(line string) core.Event {
 	return core.Event{
 		Timestamp: time.Now(),

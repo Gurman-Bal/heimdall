@@ -35,6 +35,12 @@
     </div>
 </div>
 
+<div class="reconnect-overlay" id="reconnect-overlay">
+    <div class="reconnect-message">
+        Heimdall is restarting — reconnecting automatically...
+    </div>
+</div>
+
 <header>
     <div class="header-row">
 
@@ -293,21 +299,6 @@
         </section>
 
         <section class="ops-section">
-            <h2 class="ops-section-title">Run Command</h2>
-            <p class="ops-section-help">
-                Type a command instead of clicking a button above. Allowed verbs:
-                <code>restart</code>, <code>stop</code>, <code>shutdown</code>, <code>start</code>,
-                each optionally followed by a container name (defaults to Heimdall itself).
-                Nothing outside this fixed vocabulary will run.
-            </p>
-            <form class="add-form" id="command-form">
-                <input id="command-input" placeholder="restart, shutdown, restart ollama...">
-                <button>RUN</button>
-            </form>
-            <div class="ops-error" id="command-error"></div>
-        </section>
-
-        <section class="ops-section">
             <h2 class="ops-section-title">Security</h2>
             <p class="ops-section-help">
                 Change your login password. You'll need your current password to set a new one.
@@ -323,8 +314,9 @@
         <section class="ops-section">
             <h2 class="ops-section-title">Session Settings</h2>
             <p class="ops-section-help">
-                How long you can stay idle before being logged out automatically.
-                Takes effect immediately — no restart needed.
+                Restart, stop, or start containers Heimdall can manage. Heimdall itself
+                can only be restarted here - stopping it would leave no way to start it
+                back up from this UI.
             </p>
             <form class="add-form" id="settings-form">
                 <input type="number" id="session-timeout-minutes" placeholder="session timeout (minutes)" min="1" required>

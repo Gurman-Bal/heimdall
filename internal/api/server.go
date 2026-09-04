@@ -79,7 +79,6 @@ func (s *Server) Start(addr string) error {
 	protected.HandleFunc("GET /api/system/status", s.handleSystemStatus)
 	protected.HandleFunc("GET /api/system/containers", s.handleListContainers)
 	protected.HandleFunc("POST /api/system/containers/{name}/{action}", s.handleContainerAction)
-	protected.HandleFunc("POST /api/system/command", s.handleSystemCommand)
 	protected.HandleFunc("POST /api/system/password", s.handleChangePassword)
 
 	protected.HandleFunc("GET /api/system/settings", s.handleGetSettings)

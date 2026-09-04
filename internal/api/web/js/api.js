@@ -103,15 +103,9 @@ export async function changePassword(currentPassword, newPassword) {
     });
 }
 
-export async function runCommand(command) {
-    return fetch("/api/system/command", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            command
-        })
+export async function containerAction(name, action) {
+    return fetch(`/api/system/containers/${encodeURIComponent(name)}/${action}`, {
+        method: "POST"
     });
 }
 

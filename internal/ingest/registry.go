@@ -26,3 +26,26 @@ func New(sourceType string, paths []string, store OffsetStore, classifier Classi
 	}
 	return NewFileSource(sourceType, paths, parse, store, classifier), true
 }
+
+// DefaultRule is the seed-time shape for a source type's starter rules —
+// separate from core.RuleDef, which carries a DB-assigned ID that doesn't
+// exist yet at registration time.
+type DefaultRule struct {
+	Pattern   string
+	Severity  string
+	EventType string
+}
+
+var defaultRuleRegistry = map[string][]DefaultRule{}
+
+// RegisterDefaultRules attaches starter rules to a source type, called from
+// the same init() that registers the parser. Keeps "what rules a new plugin
+// ships with" defined inside the plugin itself, instead of a central map in
+// main.go that every new plugin would otherwise need to remember to edit.
+func RegisterDefaultRules(sourceType string, rules []DefaultRule) {
+	defaultRuleRegistry[sourceType] = rules
+}
+
+func DefaultRules(sourceType string) []DefaultRule {
+	return defaultRuleRegistry[sourceType]
+}

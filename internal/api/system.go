@@ -8,79 +8,66 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 )
 
 var processStartedAt = time.Now()
 
-func (s *Server) runCommand(ctx context.Context, raw string) error {
-	fields := strings.Fields(strings.ToLower(strings.TrimSpace(raw)))
-	if len(fields) == 0 {
-		return fmt.Errorf("empty command")
-	}
+// performContainerAction is the single entry point for all container
+// control. There is no free-text parsing anywhere in this path — action is
+// one of exactly three known strings, checked with a switch, nothing else
+// can reach dockerctl.
+func (s *Server) performContainerAction(ctx context.Context, name, action string) error {
+	isSelf := name == s.selfContainer
 
-	verb := fields[0]
-	target := s.selfContainer
-	if len(fields) > 1 {
-		target = fields[1]
-	}
-	if len(fields) > 2 {
-		return fmt.Errorf("too many arguments")
-	}
-
-	switch verb {
+	switch action {
 	case "restart":
-		s.status.Set("restarting")
-		slog.Warn("restart requested", "target", target)
-		err := s.dockerctl.Restart(ctx, target)
-		if err != nil {
+		if isSelf {
+			s.status.Set("restarting")
+		}
+		slog.Warn("container restart requested", "target", name)
+		err := s.dockerctl.Restart(ctx, name)
+		if err != nil && isSelf {
 			s.status.Set("running")
 		}
 		return err
-	case "stop", "shutdown":
-		s.status.Set("stopping")
-		slog.Warn("stop requested", "target", target)
-		return s.dockerctl.Stop(ctx, target)
+
+	case "stop":
+		if isSelf {
+			return fmt.Errorf("cannot stop %s from its own UI — you'd have no way to start it back up from here; run `docker compose start %s` on the host instead", s.selfContainer, s.selfContainer)
+		}
+		slog.Warn("container stop requested", "target", name)
+		return s.dockerctl.Stop(ctx, name)
+
 	case "start":
-		slog.Info("start requested", "target", target)
-		err := s.dockerctl.Start(ctx, target)
-		if err == nil {
+		slog.Info("container start requested", "target", name)
+		err := s.dockerctl.Start(ctx, name)
+		if err == nil && isSelf {
 			s.status.Set("running")
 		}
 		return err
+
 	default:
-		return fmt.Errorf("unknown command %q — allowed: restart, stop, shutdown, start [target]", verb)
+		return fmt.Errorf("unknown action %q — allowed: restart, stop, start", action)
 	}
-}
-
-type commandRequest struct {
-	Command string `json:"command"`
-}
-
-func (s *Server) handleSystemCommand(w http.ResponseWriter, r *http.Request) {
-	var req commandRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	if err := s.runCommand(ctx, req.Command); err != nil {
-		slog.Warn("system command rejected or failed", "command", req.Command, "error", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	slog.Info("system command executed", "command", req.Command)
-	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) handleListContainers(w http.ResponseWriter, r *http.Request) {
+	names := s.dockerctl.Allowed()
+	sort.Strings(names)
+
+	type containerInfo struct {
+		Name   string `json:"name"`
+		IsSelf bool   `json:"is_self"`
+	}
+
+	out := make([]containerInfo, len(names))
+	for i, n := range names {
+		out[i] = containerInfo{Name: n, IsSelf: n == s.selfContainer}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.dockerctl.Allowed())
+	json.NewEncoder(w).Encode(out)
 }
 
 func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
@@ -90,10 +77,13 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	if err := s.runCommand(ctx, action+" "+name); err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
+	if err := s.performContainerAction(ctx, name, action); err != nil {
+		slog.Warn("container action rejected or failed", "name", name, "action", action, "error", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	slog.Info("container action executed", "name", name, "action", action)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -129,6 +119,7 @@ func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"uptime_seconds":   int(time.Since(processStartedAt).Seconds()),
 		"registered_types": types,
 		"events_dropped":   s.bus.DroppedCount(),
+		"self_container":   s.selfContainer,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
@@ -182,9 +173,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newTimeout := time.Duration(req.SessionTimeoutSeconds) * time.Second
-	s.sessions.SetTimeout(newTimeout)
-
+	s.sessions.SetTimeout(time.Duration(req.SessionTimeoutSeconds) * time.Second)
 	slog.Info("session timeout updated", "seconds", req.SessionTimeoutSeconds)
 	w.WriteHeader(http.StatusOK)
 }

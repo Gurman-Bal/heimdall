@@ -49,3 +49,23 @@
     padding: 8px 12px;
     margin-top: 8px;
 }
+
+.reconnect-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 14, 20, 0.95);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.reconnect-overlay.active {
+    display: flex;
+}
+
+.reconnect-message {
+    color: var(--text);
+    font-size: 14px;
+    letter-spacing: 0.05em;
+}
