@@ -1,4 +1,4 @@
-import { runCommand, getContainers, changePassword, getSystemStatus } from "../api.js";
+import { runCommand, getContainers, changePassword, getSystemStatus, getSettings, updateSettings } from "../api.js";
 
 const systemStatusPanel = document.getElementById("system-status");
 const containerButtons = document.getElementById("container-buttons");
@@ -7,6 +7,9 @@ const commandForm = document.getElementById("command-form");
 const commandError = document.getElementById("command-error");
 const passwordForm = document.getElementById("password-form");
 const passwordError = document.getElementById("password-error");
+const settingsForm = document.getElementById("settings-form");
+const settingsError = document.getElementById("settings-error");
+const sessionTimeoutInput = document.getElementById("session-timeout-minutes");
 
 let initialized = false;
 
@@ -14,10 +17,18 @@ export async function initializeOps() {
 
     await loadSystemStatus();
     await loadContainers();
+    await loadSettings();
 
     if (!initialized) {
         initializeForms();
         initialized = true;
+    }
+}
+
+async function loadSettings() {
+    const settings = await getSettings();
+    if (settings) {
+        sessionTimeoutInput.value = Math.round(settings.session_timeout_seconds / 60);
     }
 }
 
@@ -103,6 +114,21 @@ function initializeForms() {
 
         passwordForm.reset();
         alert("Password changed. You may need to re-authenticate.");
+    });
+
+    settingsForm.addEventListener("submit", async e => {
+        e.preventDefault();
+        settingsError.textContent = "";
+
+        const minutes = parseInt(sessionTimeoutInput.value, 10);
+        const res = await updateSettings(minutes * 60);
+
+        if (!res.ok) {
+            settingsError.textContent = await res.text();
+            return;
+        }
+
+        alert("Settings saved. Takes effect immediately for new logins/session checks.");
     });
 }
 

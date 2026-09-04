@@ -11,9 +11,6 @@ type session struct {
 	expiresAt time.Time
 }
 
-// SessionManager issues opaque tokens with a sliding expiry. This is what
-// makes logout and idle-timeout possible — HTTP Basic Auth can't do either,
-// since browsers cache Basic credentials until the browser itself closes.
 type SessionManager struct {
 	mu       sync.Mutex
 	sessions map[string]session
@@ -40,8 +37,6 @@ func (sm *SessionManager) Create() (string, error) {
 	return token, nil
 }
 
-// Validate checks the token and, on success, slides the expiry forward —
-// active use keeps a session alive; idle time lets it expire on its own.
 func (sm *SessionManager) Validate(token string) bool {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -60,6 +55,21 @@ func (sm *SessionManager) Revoke(token string) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	delete(sm.sessions, token)
+}
+
+// SetTimeout changes the idle timeout for future validations. Existing
+// sessions keep whatever expiry they already had until their next
+// successful Validate call, at which point the new timeout applies.
+func (sm *SessionManager) SetTimeout(timeout time.Duration) {
+	sm.mu.Lock()
+	sm.timeout = timeout
+	sm.mu.Unlock()
+}
+
+func (sm *SessionManager) Timeout() time.Duration {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	return sm.timeout
 }
 
 func (sm *SessionManager) reap() {

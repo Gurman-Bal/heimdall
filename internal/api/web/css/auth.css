@@ -1,0 +1,36 @@
+.login-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 14, 20, 0.95);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.login-overlay.active {
+    display: flex;
+}
+
+.login-panel {
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+}
+
+.login-form {
+    width: 100%;
+    flex-direction: column;
+}
+
+.login-wordmark {
+    text-align: center;
+}
+
+.login-form button {
+    width: 100%;
+}

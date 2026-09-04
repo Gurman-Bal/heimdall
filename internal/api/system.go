@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -148,4 +149,42 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(entries)
+}
+
+type settingsResponse struct {
+	SessionTimeoutSeconds int `json:"session_timeout_seconds"`
+}
+
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(settingsResponse{
+		SessionTimeoutSeconds: int(s.sessions.Timeout().Seconds()),
+	})
+}
+
+type updateSettingsRequest struct {
+	SessionTimeoutSeconds int `json:"session_timeout_seconds"`
+}
+
+func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	var req updateSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.SessionTimeoutSeconds < 60 {
+		http.Error(w, "session timeout must be at least 60 seconds", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.SetSetting("session_timeout_seconds", strconv.Itoa(req.SessionTimeoutSeconds)); err != nil {
+		http.Error(w, "failed to save setting", http.StatusInternalServerError)
+		return
+	}
+
+	newTimeout := time.Duration(req.SessionTimeoutSeconds) * time.Second
+	s.sessions.SetTimeout(newTimeout)
+
+	slog.Info("session timeout updated", "seconds", req.SessionTimeoutSeconds)
+	w.WriteHeader(http.StatusOK)
 }

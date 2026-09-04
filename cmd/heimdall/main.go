@@ -2,12 +2,6 @@ package main
 
 import (
 	"context"
-	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
 	"heimdall/internal/api"
 	"heimdall/internal/auth"
 	"heimdall/internal/config"
@@ -18,6 +12,12 @@ import (
 	"heimdall/internal/services/dockerctl"
 	"heimdall/internal/services/reporting"
 	"heimdall/internal/storage"
+	"log/slog"
+	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
+	"time"
 )
 
 type defaultRule struct {
@@ -104,7 +104,13 @@ func main() {
 		slog.Error("failed to load auth", "error", err)
 		os.Exit(1)
 	}
-	sessions := auth.NewSessionManager(cfg.SessionTimeout)
+	sessionTimeout := cfg.SessionTimeout
+	if v, found, err := store.GetSetting("session_timeout_seconds"); err == nil && found {
+		if secs, err := strconv.Atoi(v); err == nil {
+			sessionTimeout = time.Duration(secs) * time.Second
+		}
+	}
+	sessions := auth.NewSessionManager(sessionTimeout)
 	ctl := dockerctl.New(cfg.ControllableContainers)
 	status := core.NewStatusTracker()
 

@@ -82,6 +82,9 @@ func (s *Server) Start(addr string) error {
 	protected.HandleFunc("POST /api/system/command", s.handleSystemCommand)
 	protected.HandleFunc("POST /api/system/password", s.handleChangePassword)
 
+	protected.HandleFunc("GET /api/system/settings", s.handleGetSettings)
+	protected.HandleFunc("PUT /api/system/settings", s.handleUpdateSettings)
+
 	mux.Handle("/api/", s.requireSession(protected))
 
 	static, err := fs.Sub(webFS, "web")

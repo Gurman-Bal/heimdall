@@ -114,3 +114,17 @@ export async function runCommand(command) {
         })
     });
 }
+
+export async function getSettings() {
+    const res = await fetch("/api/system/settings");
+    if (!res.ok) return null;
+    return res.json();
+}
+
+export async function updateSettings(sessionTimeoutSeconds) {
+    return fetch("/api/system/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_timeout_seconds: sessionTimeoutSeconds })
+    });
+}

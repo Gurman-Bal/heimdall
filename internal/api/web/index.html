@@ -106,7 +106,7 @@
         <button
                 class="tab"
                 data-view="ops">
-            OPS
+            SYSTEM
         </button>
     </nav>
 </header>
@@ -274,22 +274,64 @@
 
     <div class="view" id="view-ops">
 
-        <div id="system-status" class="source-list"></div>
+        <section class="ops-section">
+            <h2 class="ops-section-title">System Status</h2>
+            <p class="ops-section-help">
+                What Heimdall itself is currently doing, and whether any monitored
+                events have been dropped due to a full buffer.
+            </p>
+            <div id="system-status" class="source-list"></div>
+        </section>
 
-        <div id="container-buttons" class="source-list"></div>
+        <section class="ops-section">
+            <h2 class="ops-section-title">Containers</h2>
+            <p class="ops-section-help">
+                Restart, stop, or start the containers Heimdall is allowed to manage.
+                Only containers explicitly allowlisted in configuration appear here.
+            </p>
+            <div id="container-buttons" class="source-list"></div>
+        </section>
 
-        <form class="add-form" id="command-form">
-            <input id="command-input" placeholder="restart, shutdown, restart ollama...">
-            <button>RUN</button>
-        </form>
-        <div class="form-error" id="command-error"></div>
+        <section class="ops-section">
+            <h2 class="ops-section-title">Run Command</h2>
+            <p class="ops-section-help">
+                Type a command instead of clicking a button above. Allowed verbs:
+                <code>restart</code>, <code>stop</code>, <code>shutdown</code>, <code>start</code>,
+                each optionally followed by a container name (defaults to Heimdall itself).
+                Nothing outside this fixed vocabulary will run.
+            </p>
+            <form class="add-form" id="command-form">
+                <input id="command-input" placeholder="restart, shutdown, restart ollama...">
+                <button>RUN</button>
+            </form>
+            <div class="ops-error" id="command-error"></div>
+        </section>
 
-        <form class="add-form" id="password-form">
-            <input type="password" id="current-password" placeholder="current password" required>
-            <input type="password" id="new-password" placeholder="new password" required>
-            <button>CHANGE PASSWORD</button>
-        </form>
-        <div class="form-error" id="password-error"></div>
+        <section class="ops-section">
+            <h2 class="ops-section-title">Security</h2>
+            <p class="ops-section-help">
+                Change your login password. You'll need your current password to set a new one.
+            </p>
+            <form class="add-form" id="password-form">
+                <input type="password" id="current-password" placeholder="current password" required>
+                <input type="password" id="new-password" placeholder="new password" required>
+                <button>CHANGE PASSWORD</button>
+            </form>
+            <div class="ops-error" id="password-error"></div>
+        </section>
+
+        <section class="ops-section">
+            <h2 class="ops-section-title">Session Settings</h2>
+            <p class="ops-section-help">
+                How long you can stay idle before being logged out automatically.
+                Takes effect immediately — no restart needed.
+            </p>
+            <form class="add-form" id="settings-form">
+                <input type="number" id="session-timeout-minutes" placeholder="session timeout (minutes)" min="1" required>
+                <button>SAVE SETTINGS</button>
+            </form>
+            <div class="ops-error" id="settings-error"></div>
+        </section>
 
     </div>
 
