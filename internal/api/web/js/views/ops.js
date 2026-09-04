@@ -1,5 +1,6 @@
-import { runCommand, getContainers, changePassword } from "../api.js";
+import { runCommand, getContainers, changePassword, getSystemStatus } from "../api.js";
 
+const systemStatusPanel = document.getElementById("system-status");
 const containerButtons = document.getElementById("container-buttons");
 const commandInput = document.getElementById("command-input");
 const commandForm = document.getElementById("command-form");
@@ -11,12 +12,48 @@ let initialized = false;
 
 export async function initializeOps() {
 
+    await loadSystemStatus();
     await loadContainers();
 
     if (!initialized) {
         initializeForms();
         initialized = true;
     }
+}
+
+async function loadSystemStatus() {
+
+    const status = await getSystemStatus();
+
+    if (!status) {
+        systemStatusPanel.innerHTML = `<div class="empty-state">could not load system status</div>`;
+        return;
+    }
+
+    systemStatusPanel.innerHTML = `
+        <div class="source-row">
+            <span class="source-path">state</span>
+            <span class="source-type">${status.state}</span>
+        </div>
+        <div class="source-row">
+            <span class="source-path">uptime</span>
+            <span class="source-type">${formatUptime(status.uptime_seconds)}</span>
+        </div>
+        <div class="source-row">
+            <span class="source-path">registered sources</span>
+            <span class="source-type">${status.registered_types.join(", ") || "none"}</span>
+        </div>
+        <div class="source-row">
+            <span class="source-path">events dropped (buffer full)</span>
+            <span class="source-type">${status.events_dropped}</span>
+        </div>
+    `;
+}
+
+function formatUptime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return `${h}h ${m}m`;
 }
 
 async function loadContainers() {
@@ -79,5 +116,7 @@ async function sendCommand(cmd) {
 
     if (!res.ok) {
         commandError.textContent = await res.text();
+    } else {
+        setTimeout(loadSystemStatus, 500);
     }
 }

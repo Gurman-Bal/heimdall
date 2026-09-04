@@ -3,27 +3,54 @@ import { getActivity } from "../api.js";
 const activityList =
     document.getElementById("activity-list");
 
-let poller = null;
+let currentWindow = "1h";
+let initialized = false;
 
 export async function initializeActivity() {
 
     await loadActivity();
 
-    if (!poller) {
-        poller = setInterval(loadActivity, 5000);
+    if (!initialized) {
+        initializeFilters();
+        initialized = true;
     }
+}
+
+function initializeFilters() {
+
+    document
+        .querySelectorAll("#view-activity .filter-btn")
+        .forEach(btn => {
+
+            btn.addEventListener("click", () => {
+
+                document
+                    .querySelectorAll("#view-activity .filter-btn")
+                    .forEach(b => b.classList.remove("active"));
+
+                btn.classList.add("active");
+
+                currentWindow =
+                    btn.dataset.window;
+
+                loadActivity();
+
+            });
+
+        });
+
 }
 
 async function loadActivity() {
 
     const entries =
-        await getActivity();
+        await getActivity(currentWindow);
 
-    if (entries.length === 0) {
+    if (!entries || entries.length === 0) {
 
         activityList.innerHTML = `
             <div class="empty-state">
-                no activity recorded yet
+                no activity recorded in this window
             </div>
         `;
 
@@ -32,18 +59,16 @@ async function loadActivity() {
 
     activityList.innerHTML =
         entries
-            .slice()
-            .reverse()
             .map(e => `
-                <div class="activity-row ${e.level.toLowerCase()}">
+                <div class="activity-row ${(e.Level || "").toLowerCase()}">
                     <span class="event-time">
-                        ${new Date(e.time).toLocaleTimeString()}
+                        ${new Date(e.Time).toLocaleString()}
                     </span>
                     <span class="activity-level">
-                        ${e.level}
+                        ${e.Level}
                     </span>
                     <span class="event-message">
-                        ${e.message}
+                        ${e.Message}
                     </span>
                 </div>
             `)

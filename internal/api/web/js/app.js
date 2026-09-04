@@ -2,7 +2,7 @@ import { initializeRouter } from "./router.js";
 import { initializeWatch } from "./views/watch.js";
 import { initializeLogin, hideLogin, showLogin } from "./login.js";
 import { getSystemStatus, logout } from "./api.js";
-
+import { initializeStatusPolling } from "./status.js";
 const logoutButton = document.getElementById("logout-btn");
 
 logoutButton.addEventListener("click", async () => {
@@ -35,6 +35,7 @@ async function initializeApp() {
 
     initializeRouter();
     initializeWatch();
+    initializeStatusPolling();
 }
 
 initializeApp();
