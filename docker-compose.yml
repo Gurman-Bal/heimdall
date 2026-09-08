@@ -5,47 +5,55 @@ services:
     restart: unless-stopped
     volumes:
       - ollama-data:/root/.ollama
-    deploy:
-      resources:
-        limits:
-          memory: 2g
-        reservations:
-          memory: 512m
 
-  heimdall:
-    build: .
-    container_name: heimdall
+  heimdall-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker.worker
+    container_name: heimdall-worker
     restart: unless-stopped
     depends_on:
       - ollama
-    ports:
-      - "8080:8080"
     volumes:
       - /var/log:/host/var/log:ro
       - /mnt/Minecraft/mc_server/servers/4809472d-3369-4c49-bf8c-8a4e6e3e1bb0/logs:/host/minecraft-logs:ro
       - heimdall-data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - HEIMDALL_LOG_DIR=/host/var/log
       - HEIMDALL_DB_PATH=/app/data/heimdall.db
+      - HEIMDALL_SPOOL_DIR=/app/data/spool
       - HEIMDALL_OLLAMA_URL=http://ollama:11434
       - HEIMDALL_LLM_MODEL=qwen2.5:0.5b
       - HEIMDALL_REPORT_INTERVAL=1h
+      - HEIMDALL_INTERNAL_ADDR=:9090
+      - HEIMDALL_INTERNAL_TOKEN=${HEIMDALL_INTERNAL_TOKEN}
+    # no ports published — only the controller talks to this, over the
+    # internal compose network by container name
+
+  heimdall-controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker.controller
+    container_name: heimdall-controller
+    restart: unless-stopped
+    depends_on:
+      - heimdall-worker
+    ports:
+      - "8080:8080"
+    volumes:
+      - heimdall-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - HEIMDALL_DB_PATH=/app/data/heimdall.db
       - HEIMDALL_AUTH_USER=${HEIMDALL_AUTH_USER:-admin}
       - HEIMDALL_AUTH_PASS=${HEIMDALL_AUTH_PASS}
-      - HEIMDALL_CONTAINER_NAME=heimdall
-      - HEIMDALL_CONTROLLABLE_CONTAINERS=heimdall,heimdall-ollama
+      - HEIMDALL_CONTROLLER_CONTAINER=heimdall-controller
+      - HEIMDALL_WORKER_CONTAINER=heimdall-worker
+      - HEIMDALL_WORKER_URL=http://heimdall-worker:9090
+      - HEIMDALL_CONTROLLABLE_CONTAINERS=heimdall-controller,heimdall-worker,heimdall-ollama
+      - HEIMDALL_INTERNAL_TOKEN=${HEIMDALL_INTERNAL_TOKEN}
       - HEIMDALL_SESSION_TIMEOUT=30m
       - HEIMDALL_ACTIVITY_RETENTION=48h
-      - HEIMDALL_EVENT_BUFFER_SIZE=20000
-      - HEIMDALL_BATCH_SIZE=1000
-      - HEIMDALL_SPOOL_DIR=/app/data/spool
-    deploy:
-      resources:
-        limits:
-          memory: 512m
-        reservations:
-          memory: 128m
 
 volumes:
   ollama-data:

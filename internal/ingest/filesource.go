@@ -169,3 +169,15 @@ func readNewLines(path string, offset int64) ([]string, int64, error) {
 	}
 	return lines, newOffset, nil
 }
+
+// Paths returns the file paths currently being tailed. Used by the worker's
+// reload logic to diff against what's in the database and reconcile.
+func (f *FileSource) Paths() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, len(f.states))
+	for i, st := range f.states {
+		out[i] = st.path
+	}
+	return out
+}

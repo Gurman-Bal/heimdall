@@ -2,27 +2,21 @@ package main
 
 import (
 	"context"
-	"heimdall/internal/api"
-	"heimdall/internal/auth"
 	"heimdall/internal/config"
 	"heimdall/internal/core"
 	"heimdall/internal/ingest"
 	_ "heimdall/internal/plugins/minecraft"
 	_ "heimdall/internal/plugins/truenas"
-	"heimdall/internal/services/dockerctl"
 	"heimdall/internal/services/reporting"
 	"heimdall/internal/storage"
+	"heimdall/internal/workerapi"
 	"log/slog"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 )
 
-// seedDefaultRules writes a source type's starter rules on first run only —
-// if any rules already exist (seeded before, or user-edited since), this is
-// a no-op so we never clobber customization.
 func seedDefaultRules(store *storage.Store, sourceType string) {
 	existing, err := store.ListRules(sourceType)
 	if err != nil {
@@ -32,7 +26,6 @@ func seedDefaultRules(store *storage.Store, sourceType string) {
 	if len(existing) > 0 {
 		return
 	}
-
 	defaults := ingest.DefaultRules(sourceType)
 	for i, r := range defaults {
 		if _, err := store.AddRule(sourceType, r.Pattern, r.Severity, r.EventType, (i+1)*10); err != nil {
@@ -62,6 +55,7 @@ func loadRules(store *storage.Store, engine *core.RuleEngine, sourceType string)
 }
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	cfg := config.Load()
 
 	store, err := storage.New(cfg.DBPath)
@@ -70,39 +64,11 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
-
-	activityLog := core.NewActivityLog(store, cfg.EventBufferSize)
-	baseHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
-	slog.SetDefault(slog.New(activityLog.Handler(baseHandler)))
-
-	slog.Info("config loaded",
-		"db_path", cfg.DBPath, "log_dir", cfg.DefaultLogDir, "api_addr", cfg.APIAddr,
-		"ollama_url", cfg.OllamaURL, "llm_model", cfg.LLMModel, "report_interval", cfg.ReportInterval,
-		"event_buffer_size", cfg.EventBufferSize, "batch_size", cfg.BatchSize,
-		"session_timeout", cfg.SessionTimeout, "activity_retention", cfg.ActivityRetention)
-	slog.Info("storage opened", "path", cfg.DBPath)
-
-	authStore, err := auth.Load(store, cfg.AuthUsername, cfg.AuthPassword)
-	if err != nil {
-		slog.Error("failed to load auth", "error", err)
-		os.Exit(1)
-	}
-
-	sessionTimeout := cfg.SessionTimeout
-	if v, found, err := store.GetSetting("session_timeout_seconds"); err == nil && found {
-		if secs, err := strconv.Atoi(v); err == nil {
-			sessionTimeout = time.Duration(secs) * time.Second
-		}
-	}
-	sessions := auth.NewSessionManager(sessionTimeout)
-	ctl := dockerctl.New(cfg.ControllableContainers)
-	status := core.NewStatusTracker()
+	slog.Info("worker: storage opened", "path", cfg.DBPath)
 
 	if existing, _ := store.ListSources("truenas"); len(existing) == 0 {
 		for _, p := range []string{cfg.DefaultLogDir + "/messages", cfg.DefaultLogDir + "/auth.log", cfg.DefaultLogDir + "/middlewared.log"} {
-			if _, err := store.AddSource("truenas", p); err != nil {
-				slog.Error("failed to seed source", "path", p, "error", err)
-			}
+			store.AddSource("truenas", p)
 		}
 	}
 
@@ -115,18 +81,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	status := core.NewStatusTracker()
 	scheduler := core.NewScheduler(bus, spool, 5*time.Second)
-	managed := map[string]api.ManagedSource{}
+	managed := map[string]workerapi.ManagedSource{}
 
 	for _, sourceType := range ingest.Registered() {
 		seedDefaultRules(store, sourceType)
 		loadRules(store, ruleEngine, sourceType)
 
-		cfgs, err := store.ListSources(sourceType)
-		if err != nil {
-			slog.Error("failed to load sources", "type", sourceType, "error", err)
-			continue
-		}
+		cfgs, _ := store.ListSources(sourceType)
 		var paths []string
 		for _, c := range cfgs {
 			paths = append(paths, c.Path)
@@ -141,18 +104,7 @@ func main() {
 		slog.Info("source type initialized", "type", sourceType, "path_count", len(paths))
 	}
 
-	go func() {
-		ticker := time.NewTicker(time.Hour)
-		defer ticker.Stop()
-		for range ticker.C {
-			activityLog.Prune(cfg.ActivityRetention)
-		}
-	}()
-
-	reporter := reporting.New(store, bus, reporting.Config{
-		OllamaURL: cfg.OllamaURL,
-		Model:     cfg.LLMModel,
-	})
+	reporter := reporting.New(store, bus, reporting.Config{OllamaURL: cfg.OllamaURL, Model: cfg.LLMModel})
 
 	go func() {
 		ticker := time.NewTicker(cfg.ReportInterval)
@@ -165,13 +117,12 @@ func main() {
 			cancel()
 		}
 	}()
-	slog.Info("report generation scheduled", "interval", cfg.ReportInterval)
 
-	srv := api.New(bus, store, managed, ruleEngine, reporter, activityLog, authStore, sessions, ctl, status, spool, cfg.SelfContainer)
+	internalSrv := workerapi.New(store, ruleEngine, reporter, managed, spool, bus, status, cfg.InternalToken)
 	go func() {
-		slog.Info("api server starting", "addr", cfg.APIAddr)
-		if err := srv.Start(cfg.APIAddr); err != nil {
-			slog.Error("api server failed", "error", err)
+		slog.Info("worker internal api starting", "addr", cfg.InternalAddr)
+		if err := internalSrv.Start(cfg.InternalAddr); err != nil {
+			slog.Error("worker internal api failed", "error", err)
 			os.Exit(1)
 		}
 	}()
@@ -181,15 +132,12 @@ func main() {
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	go scheduler.Run(stop)
 
-	slog.Info("heimdall started", "registered_types", ingest.Registered())
+	slog.Info("worker started", "registered_types", ingest.Registered())
 	<-sig
 
 	status.Set("stopping")
-	slog.Warn("shutdown signal received — stopping scheduler")
+	slog.Warn("worker shutdown signal received")
 	close(stop)
-
-	slog.Warn("allowing final event/activity batches to flush")
 	time.Sleep(1500 * time.Millisecond)
-
-	slog.Warn("shutdown complete")
+	slog.Warn("worker shutdown complete")
 }

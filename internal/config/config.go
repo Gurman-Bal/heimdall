@@ -11,22 +11,35 @@ import (
 )
 
 type Config struct {
-	DBPath                 string
-	DefaultLogDir          string
-	APIAddr                string
-	OllamaURL              string
-	LLMModel               string
-	ReportInterval         time.Duration
+	DBPath   string
+	SpoolDir string
+	APIAddr  string
+
+	// controller-only
 	AuthUsername           string
 	AuthPassword           string
-	SelfContainer          string
 	ControllableContainers []string
+	ControllerContainer    string
 	SessionTimeout         time.Duration
-	ActivityRetention      time.Duration
-	EventBufferSize        int
-	BatchSize              int
-	BatchFlushInterval     time.Duration
-	SpoolDir               string
+	WorkerInternalURL      string
+
+	// worker-only
+	DefaultLogDir      string
+	OllamaURL          string
+	LLMModel           string
+	ReportInterval     time.Duration
+	EventBufferSize    int
+	BatchSize          int
+	BatchFlushInterval time.Duration
+	InternalAddr       string
+	WorkerContainer    string
+
+	// shared secret between controller and worker's internal API — not a
+	// user-facing credential, just prevents anything else on the docker
+	// network from hitting the worker's internal endpoints.
+	InternalToken string
+
+	ActivityRetention time.Duration
 }
 
 func Load() Config {
@@ -35,17 +48,26 @@ func Load() Config {
 	}
 
 	cfg := Config{
-		DBPath:        getEnv("HEIMDALL_DB_PATH", "./heimdall.db"),
-		DefaultLogDir: getEnv("HEIMDALL_LOG_DIR", "./testlogs"),
-		APIAddr:       getEnv("HEIMDALL_API_ADDR", ":8080"),
-		OllamaURL:     getEnv("HEIMDALL_OLLAMA_URL", "http://localhost:11434"),
-		LLMModel:      getEnv("HEIMDALL_LLM_MODEL", "qwen2.5:0.5b"),
+		DBPath:   getEnv("HEIMDALL_DB_PATH", "./heimdall.db"),
+		SpoolDir: getEnv("HEIMDALL_SPOOL_DIR", "./data/spool"),
+		APIAddr:  getEnv("HEIMDALL_API_ADDR", ":8080"),
+
+		AuthUsername:        getEnv("HEIMDALL_AUTH_USER", "admin"),
+		AuthPassword:        getEnv("HEIMDALL_AUTH_PASS", ""),
+		ControllerContainer: getEnv("HEIMDALL_CONTROLLER_CONTAINER", "heimdall-controller"),
+		WorkerInternalURL:   getEnv("HEIMDALL_WORKER_URL", "http://heimdall-worker:9090"),
+
+		DefaultLogDir:   getEnv("HEIMDALL_LOG_DIR", "./testlogs"),
+		OllamaURL:       getEnv("HEIMDALL_OLLAMA_URL", "http://localhost:11434"),
+		LLMModel:        getEnv("HEIMDALL_LLM_MODEL", "qwen2.5:0.5b"),
+		InternalAddr:    getEnv("HEIMDALL_INTERNAL_ADDR", ":9090"),
+		WorkerContainer: getEnv("HEIMDALL_WORKER_CONTAINER", "heimdall-worker"),
+
+		InternalToken: getEnv("HEIMDALL_INTERNAL_TOKEN", ""),
 	}
 
-	cfg.AuthUsername = getEnv("HEIMDALL_AUTH_USER", "admin")
-	cfg.AuthPassword = getEnv("HEIMDALL_AUTH_PASS", "")
-	cfg.SelfContainer = getEnv("HEIMDALL_CONTAINER_NAME", "heimdall")
-	cfg.ControllableContainers = strings.Split(getEnv("HEIMDALL_CONTROLLABLE_CONTAINERS", "heimdall,heimdall-ollama"), ",")
+	cfg.ControllableContainers = strings.Split(
+		getEnv("HEIMDALL_CONTROLLABLE_CONTAINERS", "heimdall-controller,heimdall-worker,heimdall-ollama"), ",")
 
 	cfg.SessionTimeout = getDuration("HEIMDALL_SESSION_TIMEOUT", 30*time.Minute)
 	cfg.ActivityRetention = getDuration("HEIMDALL_ACTIVITY_RETENTION", 48*time.Hour)
@@ -54,7 +76,10 @@ func Load() Config {
 
 	cfg.EventBufferSize = getInt("HEIMDALL_EVENT_BUFFER_SIZE", 5000)
 	cfg.BatchSize = getInt("HEIMDALL_BATCH_SIZE", 500)
-	cfg.SpoolDir = getEnv("HEIMDALL_SPOOL_DIR", "./data/spool")
+
+	if cfg.InternalToken == "" {
+		slog.Warn("HEIMDALL_INTERNAL_TOKEN not set — controller/worker internal API is unauthenticated on the docker network")
+	}
 
 	return cfg
 }

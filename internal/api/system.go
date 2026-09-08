@@ -107,29 +107,29 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
-	types := make([]string, 0, len(s.sources))
-	for t := range s.sources {
-		types = append(types, t)
-	}
-	sort.Strings(types)
-
-	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
-	defer cancel()
-
-	status := map[string]any{
-		"state":            s.status.Get(),
-		"uptime_seconds":   int(time.Since(processStartedAt).Seconds()),
-		"registered_types": types,
-		"events_dropped":   s.bus.DroppedCount(),
-		"events_spilled":   s.spool.SpilledCount(),
-		"spool_backlog":    s.spool.BacklogSize(),
-		"self_container":   s.selfContainer,
-		"llm":              s.reporter.Health(ctx),
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
-}
+//func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
+//	types := make([]string, 0, len(s.sources))
+//	for t := range s.sources {
+//		types = append(types, t)
+//	}
+//	sort.Strings(types)
+//
+//	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
+//	defer cancel()
+//
+//	status := map[string]any{
+//		"state":            s.status.Get(),
+//		"uptime_seconds":   int(time.Since(processStartedAt).Seconds()),
+//		"registered_types": types,
+//		"events_dropped":   s.bus.DroppedCount(),
+//		"events_spilled":   s.spool.SpilledCount(),
+//		"spool_backlog":    s.spool.BacklogSize(),
+//		"self_container":   s.selfContainer,
+//		"llm":              s.reporter.Health(ctx),
+//	}
+//	w.Header().Set("Content-Type", "application/json")
+//	json.NewEncoder(w).Encode(status)
+//}
 
 func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	since := time.Now().Add(-24 * time.Hour)
