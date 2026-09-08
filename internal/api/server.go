@@ -40,15 +40,16 @@ type Server struct {
 	dockerctl     *dockerctl.Controller
 	status        *core.StatusTracker
 	selfContainer string
+	spool         *core.EventSpool
 }
 
 func New(bus *core.EventBus, store *storage.Store, sources map[string]ManagedSource, rules *core.RuleEngine,
 	reporter *reporting.Reporter, activityLog *core.ActivityLog, authStore *auth.Store, sessions *auth.SessionManager,
-	ctl *dockerctl.Controller, status *core.StatusTracker, selfContainer string) *Server {
+	ctl *dockerctl.Controller, status *core.StatusTracker, spool *core.EventSpool, selfContainer string) *Server {
 	return &Server{
 		bus: bus, store: store, sources: sources, rules: rules, reporter: reporter,
 		activityLog: activityLog, auth: authStore, sessions: sessions, dockerctl: ctl,
-		status: status, selfContainer: selfContainer,
+		status: status, spool: spool, selfContainer: selfContainer,
 	}
 }
 

@@ -108,7 +108,14 @@ func main() {
 
 	ruleEngine := core.NewRuleEngine()
 	bus := core.NewEventBus()
-	scheduler := core.NewScheduler(bus, 5*time.Second)
+
+	spool, err := core.NewEventSpool(cfg.EventBufferSize, cfg.SpoolDir, store.SaveEvents)
+	if err != nil {
+		slog.Error("failed to initialize event spool", "error", err)
+		os.Exit(1)
+	}
+
+	scheduler := core.NewScheduler(bus, spool, 5*time.Second)
 	managed := map[string]api.ManagedSource{}
 
 	for _, sourceType := range ingest.Registered() {
@@ -133,52 +140,6 @@ func main() {
 		managed[sourceType] = src
 		slog.Info("source type initialized", "type", sourceType, "path_count", len(paths))
 	}
-
-	persistCh := bus.Subscribe(cfg.EventBufferSize)
-	go func() {
-		batch := make([]core.Event, 0, cfg.BatchSize)
-		ticker := time.NewTicker(cfg.BatchFlushInterval)
-		defer ticker.Stop()
-
-		flush := func() {
-			if len(batch) == 0 {
-				return
-			}
-			if err := store.SaveEvents(batch); err != nil {
-				slog.Error("failed to save event batch", "count", len(batch), "error", err)
-			} else {
-				warnings, criticals := 0, 0
-				for _, e := range batch {
-					switch e.Severity {
-					case "warning":
-						warnings++
-					case "critical":
-						criticals++
-					}
-				}
-				if warnings+criticals > 0 {
-					slog.Info("event batch flushed", "total", len(batch), "warnings", warnings, "criticals", criticals)
-				}
-			}
-			batch = batch[:0]
-		}
-
-		for {
-			select {
-			case e, ok := <-persistCh:
-				if !ok {
-					flush()
-					return
-				}
-				batch = append(batch, e)
-				if len(batch) >= cfg.BatchSize {
-					flush()
-				}
-			case <-ticker.C:
-				flush()
-			}
-		}
-	}()
 
 	go func() {
 		ticker := time.NewTicker(time.Hour)
@@ -206,7 +167,7 @@ func main() {
 	}()
 	slog.Info("report generation scheduled", "interval", cfg.ReportInterval)
 
-	srv := api.New(bus, store, managed, ruleEngine, reporter, activityLog, authStore, sessions, ctl, status, cfg.SelfContainer)
+	srv := api.New(bus, store, managed, ruleEngine, reporter, activityLog, authStore, sessions, ctl, status, spool, cfg.SelfContainer)
 	go func() {
 		slog.Info("api server starting", "addr", cfg.APIAddr)
 		if err := srv.Start(cfg.APIAddr); err != nil {

@@ -27,6 +27,12 @@ type Reporter struct {
 	http  *http.Client
 }
 
+type HealthStatus struct {
+	Reachable    bool      `json:"reachable"`
+	Model        string    `json:"model"`
+	LastReportAt time.Time `json:"last_report_at,omitzero"`
+}
+
 func New(store *storage.Store, bus *core.EventBus, cfg Config) *Reporter {
 	if cfg.OllamaURL == "" {
 		cfg.OllamaURL = "http://localhost:11434"
@@ -223,4 +229,30 @@ func (r *Reporter) callOllama(ctx context.Context, prompt string) (summary strin
 	}
 
 	return out.Summary, out.Issues, nil
+}
+
+// Health pings Ollama directly (not through a chat completion, which would
+// be slow and cost tokens) and reports when the last successful report ran,
+// so the dashboard can tell "LLM unreachable" apart from "just hasn't run yet".
+func (r *Reporter) Health(ctx context.Context) HealthStatus {
+	status := HealthStatus{Model: r.cfg.Model}
+
+	if last, err := r.store.LastReportTime(); err == nil && !last.IsZero() {
+		status.LastReportAt = last
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, "GET", r.cfg.OllamaURL+"/api/tags", nil)
+	if err != nil {
+		return status
+	}
+	resp, err := r.http.Do(req)
+	if err != nil {
+		return status
+	}
+	defer resp.Body.Close()
+	status.Reachable = resp.StatusCode == http.StatusOK
+	return status
 }

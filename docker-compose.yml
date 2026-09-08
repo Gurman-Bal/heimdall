@@ -39,6 +39,7 @@ services:
       - HEIMDALL_ACTIVITY_RETENTION=48h
       - HEIMDALL_EVENT_BUFFER_SIZE=20000
       - HEIMDALL_BATCH_SIZE=1000
+      - HEIMDALL_SPOOL_DIR=/app/data/spool
     deploy:
       resources:
         limits:

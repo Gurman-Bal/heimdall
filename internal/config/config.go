@@ -26,6 +26,7 @@ type Config struct {
 	EventBufferSize        int
 	BatchSize              int
 	BatchFlushInterval     time.Duration
+	SpoolDir               string
 }
 
 func Load() Config {
@@ -53,6 +54,7 @@ func Load() Config {
 
 	cfg.EventBufferSize = getInt("HEIMDALL_EVENT_BUFFER_SIZE", 5000)
 	cfg.BatchSize = getInt("HEIMDALL_BATCH_SIZE", 500)
+	cfg.SpoolDir = getEnv("HEIMDALL_SPOOL_DIR", "./data/spool")
 
 	return cfg
 }
