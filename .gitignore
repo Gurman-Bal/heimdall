@@ -8,6 +8,7 @@
 # Test
 *.test
 testlogs/
+data/
 
 # Coverage
 *.out

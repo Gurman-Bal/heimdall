@@ -1,0 +1,60 @@
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 14, 20, 0.85);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-overlay.active {
+    display: flex;
+}
+
+.modal-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px;
+    width: 340px;
+    max-width: 90vw;
+}
+
+.modal-message {
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.modal-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    padding: 6px 14px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.modal-btn:hover {
+    border-color: var(--info);
+}
+
+.modal-btn-danger {
+    border-color: var(--critical);
+    color: var(--critical);
+}
+
+.modal-btn-danger:hover {
+    background: rgba(240, 85, 95, 0.1);
+}

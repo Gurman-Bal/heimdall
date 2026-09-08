@@ -6,6 +6,8 @@ const activityList =
 let currentWindow = "1h";
 let initialized = false;
 
+let activityPoller = null;
+
 export async function initializeActivity() {
 
     await loadActivity();
@@ -14,6 +16,9 @@ export async function initializeActivity() {
         initializeFilters();
         initialized = true;
     }
+
+    if (activityPoller) clearInterval(activityPoller);
+    activityPoller = setInterval(loadActivity, 5000);
 }
 
 function initializeFilters() {

@@ -1,4 +1,5 @@
 import { getContainers, changePassword, getSystemStatus, getSettings, updateSettings, containerAction } from "../api.js";
+import { confirmDialog, alertDialog } from "../components/modal.js";
 
 const systemStatusPanel = document.getElementById("system-status");
 const containerButtons = document.getElementById("container-buttons");
@@ -11,6 +12,8 @@ const reconnectOverlay = document.getElementById("reconnect-overlay");
 
 let initialized = false;
 
+let statusPoller = null;
+
 export async function initializeOps() {
 
     await loadSystemStatus();
@@ -21,6 +24,9 @@ export async function initializeOps() {
         initializeForms();
         initialized = true;
     }
+
+    if (statusPoller) clearInterval(statusPoller);
+    statusPoller = setInterval(loadSystemStatus, 5000);
 }
 
 async function loadSettings() {
@@ -110,7 +116,7 @@ function initializeForms() {
         }
 
         passwordForm.reset();
-        alert("Password changed.");
+        await alertDialog("Password changed.");
     });
 
     settingsForm.addEventListener("submit", async e => {
@@ -125,30 +131,8 @@ function initializeForms() {
             return;
         }
 
-        alert("Settings saved.");
+        await alertDialog("Settings saved.");
     });
-}
-
-async function sendAction(name, action, isSelf) {
-
-    if (!confirm(`${action.toUpperCase()} "${name}"?`)) return;
-
-    const res = await containerAction(name, action);
-
-    if (!res.ok) {
-        alert(await res.text());
-        return;
-    }
-
-    if (isSelf && action === "restart") {
-        // Heimdall's own process is about to exit and come back via Docker's
-        // restart policy. The page can't talk to a dead process, so show a
-        // waiting state and reload once it's reachable again, instead of
-        // just erroring out or looking frozen.
-        waitForReconnect();
-    } else {
-        setTimeout(loadSystemStatus, 500);
-    }
 }
 
 function waitForReconnect() {
@@ -162,4 +146,23 @@ function waitForReconnect() {
             location.reload();
         }
     }, 1000);
+}
+
+async function sendAction(name, action, isSelf) {
+
+    const ok = await confirmDialog(`${action.toUpperCase()} "${name}"?`, { danger: action === "stop" });
+    if (!ok) return;
+
+    const res = await containerAction(name, action);
+
+    if (!res.ok) {
+        await alertDialog(await res.text());
+        return;
+    }
+
+    if (isSelf && action === "restart") {
+        waitForReconnect();
+    } else {
+        setTimeout(loadSystemStatus, 500);
+    }
 }
