@@ -82,7 +82,7 @@ func (s *EventSpool) BacklogSize() int {
 }
 
 // memDrainLoop batches whatever's arriving in the memory channel and writes
-// it to the sink (SQLite) — this is the normal, non-overflow path.
+// it to the sink (SQLite) - this is the normal, non-overflow path.
 func (s *EventSpool) memDrainLoop() {
 	const maxBatch = 500
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -116,7 +116,7 @@ func (s *EventSpool) memDrainLoop() {
 // disk as one gzip member. Writing in small, individually-closed gzip
 // members (rather than one long-lived stream) means the file on disk is
 // always fully decodable up to the last flush, even if the process dies
-// mid-write — at most one flush interval's worth of overflow is at risk,
+// mid-write - at most one flush interval's worth of overflow is at risk,
 // not the whole file.
 func (s *EventSpool) spillFlushLoop() {
 	ticker := time.NewTicker(1 * time.Second)
@@ -143,13 +143,21 @@ func (s *EventSpool) appendSpillMember(events []Event) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			slog.Error("failed to append member storage", "error", err)
+		}
+	}(f)
 
 	gw := gzip.NewWriter(f)
 	enc := json.NewEncoder(gw)
 	for _, e := range events {
 		if err := enc.Encode(e); err != nil {
-			gw.Close()
+			err := gw.Close()
+			if err != nil {
+				return err
+			}
 			return err
 		}
 	}
@@ -158,7 +166,7 @@ func (s *EventSpool) appendSpillMember(events []Event) error {
 
 // spillDrainLoop periodically tries to move the spill file's contents back
 // into memory (and from there, into the sink), then deletes the file once
-// fully consumed — this is the compaction step that keeps disk usage bounded
+// fully consumed, this is the compaction step that keeps disk usage bounded
 // once a burst has passed.
 func (s *EventSpool) spillDrainLoop() {
 	ticker := time.NewTicker(5 * time.Second)
@@ -186,7 +194,10 @@ func (s *EventSpool) drainSpillFile() error {
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
-		f.Close()
+		err := f.Close()
+		if err != nil {
+			return err
+		}
 		return err
 	}
 	gr.Multistream(true) // read across all concatenated gzip members in the file
@@ -200,11 +211,17 @@ func (s *EventSpool) drainSpillFile() error {
 		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
 			continue // skip a corrupt line rather than abandon the whole drain
 		}
-		s.mem <- e // fine to block briefly here — this is background compaction, not the hot ingestion path
+		s.mem <- e // fine to block briefly here - this is background compaction, not the hot ingestion path
 		drained++
 	}
-	gr.Close()
-	f.Close()
+	err = gr.Close()
+	if err != nil {
+		return err
+	}
+	err = f.Close()
+	if err != nil {
+		return err
+	}
 
 	if drained > 0 {
 		slog.Info("drained spool file back into persistence pipeline", "count", drained)

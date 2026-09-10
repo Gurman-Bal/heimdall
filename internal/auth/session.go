@@ -11,6 +11,7 @@ type session struct {
 	expiresAt time.Time
 }
 
+// SessionManager defines a current session before authorization expires
 type SessionManager struct {
 	mu       sync.Mutex
 	sessions map[string]session

@@ -22,6 +22,7 @@ type Store struct {
 	db           *storage.Store
 }
 
+// Load credentials from store
 func Load(db *storage.Store, defaultUser, defaultPass string) (*Store, error) {
 	s := &Store{db: db}
 
@@ -43,7 +44,7 @@ func Load(db *storage.Store, defaultUser, defaultPass string) (*Store, error) {
 	}
 	if !found {
 		if defaultPass == "" {
-			return nil, fmt.Errorf("no password configured — set HEIMDALL_AUTH_PASS before first run")
+			return nil, fmt.Errorf("no password configured - set HEIMDALL_AUTH_PASS before first run")
 		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(defaultPass), bcrypt.DefaultCost)
 		if err != nil {
@@ -61,6 +62,7 @@ func Load(db *storage.Store, defaultUser, defaultPass string) (*Store, error) {
 	return s, nil
 }
 
+// Verify the credentials
 func (s *Store) Verify(username, password string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -70,6 +72,7 @@ func (s *Store) Verify(username, password string) bool {
 	return bcrypt.CompareHashAndPassword(s.passwordHash, []byte(password)) == nil
 }
 
+// ChangePassword changes the password
 func (s *Store) ChangePassword(currentPassword, newPassword string) error {
 	if len(newPassword) < 8 {
 		return fmt.Errorf("new password must be at least 8 characters")

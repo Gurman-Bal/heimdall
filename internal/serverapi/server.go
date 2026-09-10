@@ -1,4 +1,4 @@
-package workerapi
+package serverapi
 
 import (
 	"context"
@@ -58,27 +58,33 @@ func (s *Server) Start(addr string) error {
 	return http.ListenAndServe(addr, mux)
 }
 
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	err := json.NewEncoder(w).Encode(map[string]any{
 		"state":          s.status.Get(),
 		"events_dropped": s.bus.DroppedCount(),
 		"events_spilled": s.spool.SpilledCount(),
 		"spool_backlog":  s.spool.BacklogSize(),
 	})
+	if err != nil {
+		return
+	}
 }
 
 func (s *Server) handleLLMHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
 	defer cancel()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.reporter.Health(ctx))
+	err := json.NewEncoder(w).Encode(s.reporter.Health(ctx))
+	if err != nil {
+		return
+	}
 }
 
 // handleReload reconciles every registered source type's tailed paths and
 // the rule engine against whatever's currently in the database — called by
 // the controller right after any write to the sources or rules tables.
-func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleReload(w http.ResponseWriter, _ *http.Request) {
 	for _, sourceType := range ingest.Registered() {
 		managed, ok := s.sources[sourceType]
 		if !ok {
@@ -135,5 +141,8 @@ func (s *Server) handleGenerateReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"id": id})
+	err = json.NewEncoder(w).Encode(map[string]any{"id": id})
+	if err != nil {
+		return
+	}
 }

@@ -10,7 +10,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: heimdall-worker
+    container_name: heimdall-server
     restart: unless-stopped
     depends_on:
       - ollama
@@ -34,7 +34,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.controller
-    container_name: heimdall-controller
+    container_name: heimdall-ui
     restart: unless-stopped
     depends_on:
       - heimdall-worker
@@ -47,10 +47,10 @@ services:
       - HEIMDALL_DB_PATH=/app/data/heimdall.db
       - HEIMDALL_AUTH_USER=${HEIMDALL_AUTH_USER:-admin}
       - HEIMDALL_AUTH_PASS=${HEIMDALL_AUTH_PASS}
-      - HEIMDALL_CONTROLLER_CONTAINER=heimdall-controller
-      - HEIMDALL_WORKER_CONTAINER=heimdall-worker
-      - HEIMDALL_WORKER_URL=http://heimdall-worker:9090
-      - HEIMDALL_CONTROLLABLE_CONTAINERS=heimdall-controller,heimdall-worker,heimdall-ollama
+      - HEIMDALL_CONTROLLER_CONTAINER=heimdall-ui
+      - HEIMDALL_WORKER_CONTAINER=heimdall-server
+      - HEIMDALL_WORKER_URL=http://heimdall-server:9090
+      - HEIMDALL_CONTROLLABLE_CONTAINERS=heimdall-ui,heimdall-server,heimdall-ollama
       - HEIMDALL_INTERNAL_TOKEN=${HEIMDALL_INTERNAL_TOKEN}
       - HEIMDALL_SESSION_TIMEOUT=30m
       - HEIMDALL_ACTIVITY_RETENTION=48h

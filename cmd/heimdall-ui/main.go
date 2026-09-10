@@ -22,7 +22,12 @@ func main() {
 		slog.Error("failed to open storage", "error", err)
 		os.Exit(1)
 	}
-	defer store.Close()
+	defer func(store *storage.Store) {
+		err := store.Close()
+		if err != nil {
+			slog.Error("failed to close storage", "error", err)
+		}
+	}(store)
 
 	activityLog := core.NewActivityLog(store, cfg.EventBufferSize)
 

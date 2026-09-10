@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -45,10 +47,18 @@ func (c *Client) Health(ctx context.Context) HealthStatus {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return HealthStatus{State: "unreachable"}
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			slog.Error("failed to close storage", "error", err)
+		}
+	}(resp.Body)
 
 	var h HealthStatus
-	json.NewDecoder(resp.Body).Decode(&h)
+	err = json.NewDecoder(resp.Body).Decode(&h)
+	if err != nil {
+		return HealthStatus{}
+	}
 	h.Reachable = true
 	return h
 }
@@ -64,10 +74,18 @@ func (c *Client) LLMHealth(ctx context.Context) LLMHealth {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return LLMHealth{}
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			slog.Error("failed to close storage", "error", err)
+		}
+	}(resp.Body)
 
 	var h LLMHealth
-	json.NewDecoder(resp.Body).Decode(&h)
+	err = json.NewDecoder(resp.Body).Decode(&h)
+	if err != nil {
+		return LLMHealth{}
+	}
 	return h
 }
 
@@ -76,7 +94,12 @@ func (c *Client) Reload(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("worker unreachable: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			slog.Error("failed to close storage", "error", err)
+		}
+	}(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("worker returned %d", resp.StatusCode)
 	}
@@ -88,13 +111,21 @@ func (c *Client) GenerateReport(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("worker unreachable: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			slog.Error("failed to close storage", "error", err)
+		}
+	}(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("worker returned %d", resp.StatusCode)
 	}
 	var out struct {
 		ID int64 `json:"id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&out)
+	err = json.NewDecoder(resp.Body).Decode(&out)
+	if err != nil {
+		return 0, err
+	}
 	return out.ID, nil
 }

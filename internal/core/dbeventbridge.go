@@ -9,9 +9,9 @@ type EventLister interface {
 	EventsSince(since time.Time) ([]Event, error)
 }
 
-// DBEventBridge polls storage for new rows and republishes them on a local
+// StartDBEventBridge polls storage for new rows and republishes them on a local
 // EventBus, giving the controller a live SSE feed without sharing an
-// in-process channel with the worker (impossible — different process).
+// in-process channel with the worker.
 func StartDBEventBridge(store EventLister, bus *EventBus, interval time.Duration) {
 	go func() {
 		last := time.Now()

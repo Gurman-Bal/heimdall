@@ -44,7 +44,7 @@ func (b *EventBus) DroppedCount() int64 {
 }
 
 // reportDrops summarizes drops periodically rather than logging one line per
-// dropped event — a per-event log during exactly the burst that causes drops
+// dropped event - a per-event log during exactly the burst that causes drops
 // would itself add to the overload.
 func (b *EventBus) reportDrops() {
 	ticker := time.NewTicker(10 * time.Second)
@@ -53,7 +53,7 @@ func (b *EventBus) reportDrops() {
 	for range ticker.C {
 		current := b.dropped.Load()
 		if current > last {
-			slog.Warn("event bus dropped events — buffer full, increase HEIMDALL_EVENT_BUFFER_SIZE if this recurs",
+			slog.Warn("event bus dropped events - buffer full, increase HEIMDALL_EVENT_BUFFER_SIZE if this recurs",
 				"dropped_since_last_report", current-last, "total_dropped", current)
 		}
 		last = current

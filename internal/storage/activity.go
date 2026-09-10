@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"heimdall/internal/core"
@@ -27,9 +29,14 @@ func (s *Store) RecentActivity(since time.Time, limit int) ([]core.ActivityEntry
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			slog.Error("failed to close storage", "error", err)
+		}
+	}(rows)
 
-	out := []core.ActivityEntry{}
+	var out []core.ActivityEntry
 	for rows.Next() {
 		var e core.ActivityEntry
 		var attrsJSON string
@@ -37,7 +44,10 @@ func (s *Store) RecentActivity(since time.Time, limit int) ([]core.ActivityEntry
 			return nil, err
 		}
 		e.Attrs = map[string]string{}
-		json.Unmarshal([]byte(attrsJSON), &e.Attrs)
+		err := json.Unmarshal([]byte(attrsJSON), &e.Attrs)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, e)
 	}
 	return out, rows.Err()

@@ -15,7 +15,7 @@ type Config struct {
 	SpoolDir string
 	APIAddr  string
 
-	// controller-only
+	// ui-only
 	AuthUsername           string
 	AuthPassword           string
 	ControllableContainers []string
@@ -23,7 +23,7 @@ type Config struct {
 	SessionTimeout         time.Duration
 	WorkerInternalURL      string
 
-	// worker-only
+	// server-only
 	DefaultLogDir      string
 	OllamaURL          string
 	LLMModel           string
@@ -34,7 +34,7 @@ type Config struct {
 	InternalAddr       string
 	WorkerContainer    string
 
-	// shared secret between controller and worker's internal API — not a
+	// shared secret between ui and server internal API - not a
 	// user-facing credential, just prevents anything else on the docker
 	// network from hitting the worker's internal endpoints.
 	InternalToken string
@@ -54,20 +54,20 @@ func Load() Config {
 
 		AuthUsername:        getEnv("HEIMDALL_AUTH_USER", "admin"),
 		AuthPassword:        getEnv("HEIMDALL_AUTH_PASS", ""),
-		ControllerContainer: getEnv("HEIMDALL_CONTROLLER_CONTAINER", "heimdall-controller"),
+		ControllerContainer: getEnv("HEIMDALL_CONTROLLER_CONTAINER", "heimdall-ui"),
 		WorkerInternalURL:   getEnv("HEIMDALL_WORKER_URL", "http://heimdall-worker:9090"),
 
 		DefaultLogDir:   getEnv("HEIMDALL_LOG_DIR", "./testlogs"),
 		OllamaURL:       getEnv("HEIMDALL_OLLAMA_URL", "http://localhost:11434"),
 		LLMModel:        getEnv("HEIMDALL_LLM_MODEL", "qwen2.5:0.5b"),
 		InternalAddr:    getEnv("HEIMDALL_INTERNAL_ADDR", ":9090"),
-		WorkerContainer: getEnv("HEIMDALL_WORKER_CONTAINER", "heimdall-worker"),
+		WorkerContainer: getEnv("HEIMDALL_WORKER_CONTAINER", "heimdall-server"),
 
 		InternalToken: getEnv("HEIMDALL_INTERNAL_TOKEN", ""),
 	}
 
 	cfg.ControllableContainers = strings.Split(
-		getEnv("HEIMDALL_CONTROLLABLE_CONTAINERS", "heimdall-controller,heimdall-worker,heimdall-ollama"), ",")
+		getEnv("HEIMDALL_CONTROLLABLE_CONTAINERS", "heimdall-ui,heimdall-server,heimdall-ollama"), ",")
 
 	cfg.SessionTimeout = getDuration("HEIMDALL_SESSION_TIMEOUT", 30*time.Minute)
 	cfg.ActivityRetention = getDuration("HEIMDALL_ACTIVITY_RETENTION", 48*time.Hour)

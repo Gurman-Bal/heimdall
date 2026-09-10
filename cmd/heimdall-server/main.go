@@ -7,9 +7,9 @@ import (
 	"heimdall/internal/ingest"
 	_ "heimdall/internal/plugins/minecraft"
 	_ "heimdall/internal/plugins/truenas"
+	"heimdall/internal/serverapi"
 	"heimdall/internal/services/reporting"
 	"heimdall/internal/storage"
-	"heimdall/internal/workerapi"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -63,12 +63,20 @@ func main() {
 		slog.Error("failed to open storage", "error", err)
 		os.Exit(1)
 	}
-	defer store.Close()
+	defer func(store *storage.Store) {
+		err := store.Close()
+		if err != nil {
+			slog.Error("failed to close storage", "error", err)
+		}
+	}(store)
 	slog.Info("worker: storage opened", "path", cfg.DBPath)
 
 	if existing, _ := store.ListSources("truenas"); len(existing) == 0 {
 		for _, p := range []string{cfg.DefaultLogDir + "/messages", cfg.DefaultLogDir + "/auth.log", cfg.DefaultLogDir + "/middlewared.log"} {
-			store.AddSource("truenas", p)
+			_, err := store.AddSource("truenas", p)
+			if err != nil {
+				return
+			}
 		}
 	}
 
@@ -83,7 +91,7 @@ func main() {
 
 	status := core.NewStatusTracker()
 	scheduler := core.NewScheduler(bus, spool, 5*time.Second)
-	managed := map[string]workerapi.ManagedSource{}
+	managed := map[string]serverapi.ManagedSource{}
 
 	for _, sourceType := range ingest.Registered() {
 		seedDefaultRules(store, sourceType)
@@ -118,7 +126,7 @@ func main() {
 		}
 	}()
 
-	internalSrv := workerapi.New(store, ruleEngine, reporter, managed, spool, bus, status, cfg.InternalToken)
+	internalSrv := serverapi.New(store, ruleEngine, reporter, managed, spool, bus, status, cfg.InternalToken)
 	go func() {
 		slog.Info("worker internal api starting", "addr", cfg.InternalAddr)
 		if err := internalSrv.Start(cfg.InternalAddr); err != nil {

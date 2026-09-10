@@ -15,7 +15,7 @@ type ActivityEntry struct {
 
 // ActivityStore is implemented by storage.Store. Defined here as an
 // interface so core never imports storage (storage already imports core
-// for Event — the reverse would be a cycle).
+// for Event, the reverse would be a cycle).
 type ActivityStore interface {
 	SaveActivity(e ActivityEntry) error
 	RecentActivity(since time.Time, limit int) ([]ActivityEntry, error)
@@ -24,7 +24,7 @@ type ActivityStore interface {
 
 // ActivityLog buffers Heimdall's own operational log lines and persists
 // them in small batches, so the Activity tab survives restarts and supports
-// querying a time window (1h/24h/48h) instead of "whatever's in RAM right now".
+// querying a time window (1h/24h/48h).
 type ActivityLog struct {
 	ch    chan ActivityEntry
 	store ActivityStore
@@ -79,7 +79,7 @@ func (a *ActivityLog) add(e ActivityEntry) {
 	select {
 	case a.ch <- e:
 	default:
-		// Activity log entries are diagnostic, not monitored data — fine to
+		// Activity log entries are diagnostic, not monitored data - fine to
 		// drop under truly extreme load rather than block the caller.
 	}
 }
