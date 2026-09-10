@@ -9,7 +9,7 @@ services:
   heimdall-worker:
     build:
       context: .
-      dockerfile: Dockerfile.worker.worker
+      dockerfile: Dockerfile.worker
     container_name: heimdall-worker
     restart: unless-stopped
     depends_on:
@@ -33,7 +33,7 @@ services:
   heimdall-controller:
     build:
       context: .
-      dockerfile: Dockerfile.worker.controller
+      dockerfile: Dockerfile.controller
     container_name: heimdall-controller
     restart: unless-stopped
     depends_on:

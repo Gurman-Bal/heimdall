@@ -7,7 +7,7 @@ go mod tidy
 if (-not (Test-Path ".env")) {
     Write-Host "`nCreating .env from .env.example..."
     Copy-Item ".env.example" ".env"
-    Write-Host "Edit .env and set a real HEIMDALL_AUTH_PASS before first run." -ForegroundColor Yellow
+    Write-Host "Edit .env and set real values for HEIMDALL_AUTH_PASS and HEIMDALL_INTERNAL_TOKEN before running." -ForegroundColor Yellow
 } else {
     Write-Host "`n.env already exists, leaving as-is."
 }
@@ -16,6 +16,10 @@ if (-not (Test-Path "testlogs")) {
     Write-Host "`nCreating ./testlogs..."
     New-Item -ItemType Directory -Path "testlogs" | Out-Null
     New-Item -ItemType File -Path "testlogs\messages", "testlogs\auth.log", "testlogs\middlewared.log" | Out-Null
+}
+
+if (-not (Test-Path "data\spool")) {
+    New-Item -ItemType Directory -Path "data\spool" -Force | Out-Null
 }
 
 Write-Host "`nChecking Ollama..."
@@ -36,8 +40,6 @@ Write-Host "`nFormatting and linting..."
 
 Write-Host ""
 Write-Host "== Setup complete ==" -ForegroundColor Cyan
-Write-Host "Run locally: go run ./cmd/heimdall"
-Write-Host ""
-Write-Host "NOTE: the Ops tab (restart/stop/start containers) only works when" -ForegroundColor Yellow
-Write-Host "running inside Docker on TrueNAS/Linux — it needs /var/run/docker.sock," -ForegroundColor Yellow
-Write-Host "which doesn't exist on Windows. Test that feature on the real deployment." -ForegroundColor Yellow
+Write-Host "Heimdall is now split into two processes: worker + controller." -ForegroundColor Yellow
+Write-Host "Run both locally with: .\scripts\run-local.ps1" -ForegroundColor Yellow
+Write-Host "(or manually, each in its own terminal — see that script for the exact commands)"
