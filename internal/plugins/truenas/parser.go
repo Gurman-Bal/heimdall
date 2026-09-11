@@ -15,6 +15,7 @@ func init() {
 		{Pattern: `(?i)\b(panic|critical|failed|failure)\b`, Severity: "critical", EventType: "error"},
 		{Pattern: `(?i)\b(degraded|warn|warning)\b`, Severity: "warning", EventType: "warning"},
 		{Pattern: `(?i)\b(denied|refused|error)\b`, Severity: "warning", EventType: "error"},
+		{Pattern: `(?i)(docker0|br-[0-9a-f]+|veth[0-9a-f]+).*(entered (forwarding|blocking|disabled) state|entered (promiscuous|allmulticast) mode|renamed from eth0|unregistering)`, Severity: "ignore", EventType: "noise"},
 	})
 }
 
