@@ -17,7 +17,7 @@ type Client struct {
 }
 
 func New(baseURL, token string) *Client {
-	return &Client{baseURL: baseURL, token: token, http: &http.Client{Timeout: 10 * time.Second}}
+	return &Client{baseURL: baseURL, token: token, http: &http.Client{Timeout: 3 * time.Second}}
 }
 
 func (c *Client) do(ctx context.Context, method, path string) (*http.Response, error) {

@@ -9,15 +9,18 @@ export function initializeStatusPolling() {
 }
 
 async function poll() {
-
     const status = await getSystemStatus();
     if (!status) return;
 
-    appStateDot.className = `status-dot ${stateClass(status.state)}`;
-    appStateText.textContent = status.state;
+    const worker = status.worker || {};
+    const state = worker.state || "unreachable";
+
+    appStateDot.className = `status-dot ${stateClass(state)}`;
+    appStateText.textContent = state;
 }
 
 function stateClass(state) {
+    if (state === "unreachable") return "critical";
     if (state === "restarting" || state === "stopping") return "warning";
     return "info";
 }

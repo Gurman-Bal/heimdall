@@ -11,14 +11,16 @@ const sessionTimeoutInput = document.getElementById("session-timeout-minutes");
 const reconnectOverlay = document.getElementById("reconnect-overlay");
 
 let initialized = false;
-
 let statusPoller = null;
 
 export async function initializeOps() {
 
-    await loadSystemStatus();
-    await loadContainers();
-    await loadSettings();
+    // Run independently — one failing must never block the others again.
+    await Promise.allSettled([
+        loadSystemStatus(),
+        loadContainers(),
+        loadSettings(),
+    ]);
 
     if (!initialized) {
         initializeForms();
@@ -29,75 +31,97 @@ export async function initializeOps() {
     statusPoller = setInterval(loadSystemStatus, 5000);
 }
 
-async function loadSettings() {
-    const settings = await getSettings();
-    if (settings) {
-        sessionTimeoutInput.value = Math.round(settings.session_timeout_seconds / 60);
+export function teardownOps() {
+    if (statusPoller) {
+        clearInterval(statusPoller);
+        statusPoller = null;
     }
 }
 
 async function loadSystemStatus() {
+    try {
+        const status = await getSystemStatus();
 
-    const status = await getSystemStatus();
+        if (!status) {
+            systemStatusPanel.innerHTML = `<div class="empty-state">could not load system status</div>`;
+            return;
+        }
 
-    if (!status) {
+        const worker = status.worker || {};
+        const llm = status.llm || {};
+
+        systemStatusPanel.innerHTML = `
+            <div class="source-row">
+                <span class="source-path">controller</span>
+                <span class="source-type">${status.controller_state || "running"}</span>
+            </div>
+            <div class="source-row">
+                <span class="source-path">worker</span>
+                <span class="source-type">${worker.state || "unknown"}</span>
+            </div>
+            <div class="source-row">
+                <span class="source-path">events dropped (live stream)</span>
+                <span class="source-type">${worker.events_dropped ?? "—"}</span>
+            </div>
+            <div class="source-row">
+                <span class="source-path">events spilled to disk</span>
+                <span class="source-type">${worker.events_spilled ?? "—"}</span>
+            </div>
+            <div class="source-row">
+                <span class="source-path">spool backlog</span>
+                <span class="source-type">${worker.spool_backlog ?? "—"}</span>
+            </div>
+            <div class="source-row">
+                <span class="source-path">llm</span>
+                <span class="source-type">${llm.reachable ? `reachable (${llm.model})` : "unreachable"}</span>
+            </div>
+        `;
+    } catch (err) {
+        console.error("failed to load system status:", err);
         systemStatusPanel.innerHTML = `<div class="empty-state">could not load system status</div>`;
-        return;
     }
-
-    systemStatusPanel.innerHTML = `
-        <div class="source-row">
-            <span class="source-path">state</span>
-            <span class="source-type">${status.state}</span>
-        </div>
-        <div class="source-row">
-            <span class="source-path">uptime</span>
-            <span class="source-type">${formatUptime(status.uptime_seconds)}</span>
-        </div>
-        <div class="source-row">
-            <span class="source-path">registered sources</span>
-            <span class="source-type">${status.registered_types.join(", ") || "none"}</span>
-        </div>
-        <div class="source-row">
-            <span class="source-path">events dropped (buffer full)</span>
-            <span class="source-type">${status.events_dropped}</span>
-        </div>
-    `;
-}
-
-function formatUptime(seconds) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    return `${h}h ${m}m`;
 }
 
 async function loadContainers() {
+    try {
+        const containers = await getContainers();
 
-    const containers = await getContainers();
-
-    // Self can only be restarted, never stopped — stopping it from its own
-    // UI would leave no way to start it back up from here.
-    containerButtons.innerHTML =
-        containers
-            .map(c => `
-                <div class="source-row">
-                    <span class="source-path">${c.name}${c.is_self ? " (this instance)" : ""}</span>
-                    <div>
-                        <button class="remove-btn" data-name="${c.name}" data-action="restart" data-self="${c.is_self}">RESTART</button>
-                        ${c.is_self ? "" : `
-                            <button class="remove-btn" data-name="${c.name}" data-action="stop" data-self="false">STOP</button>
-                            <button class="remove-btn" data-name="${c.name}" data-action="start" data-self="false">START</button>
-                        `}
+        containerButtons.innerHTML =
+            containers
+                .map(c => `
+                    <div class="source-row">
+                        <span class="source-path">${c.name}${c.is_self ? " (this instance)" : ""}</span>
+                        <div>
+                            <button class="remove-btn" data-name="${c.name}" data-action="restart" data-self="${c.is_self}">RESTART</button>
+                            ${c.is_self ? "" : `
+                                <button class="remove-btn" data-name="${c.name}" data-action="stop" data-self="false">STOP</button>
+                                <button class="remove-btn" data-name="${c.name}" data-action="start" data-self="false">START</button>
+                            `}
+                        </div>
                     </div>
-                </div>
-            `)
-            .join("");
+                `)
+                .join("");
 
-    containerButtons.querySelectorAll("button").forEach(btn => {
-        btn.addEventListener("click", () =>
-            sendAction(btn.dataset.name, btn.dataset.action, btn.dataset.self === "true")
-        );
-    });
+        containerButtons.querySelectorAll("button").forEach(btn => {
+            btn.addEventListener("click", () =>
+                sendAction(btn.dataset.name, btn.dataset.action, btn.dataset.self === "true")
+            );
+        });
+    } catch (err) {
+        console.error("failed to load containers:", err);
+        containerButtons.innerHTML = `<div class="empty-state">could not load containers</div>`;
+    }
+}
+
+async function loadSettings() {
+    try {
+        const settings = await getSettings();
+        if (settings) {
+            sessionTimeoutInput.value = Math.round(settings.session_timeout_seconds / 60);
+        }
+    } catch (err) {
+        console.error("failed to load settings:", err);
+    }
 }
 
 function initializeForms() {
@@ -136,7 +160,6 @@ function initializeForms() {
 }
 
 function waitForReconnect() {
-
     reconnectOverlay.classList.add("active");
 
     const poll = setInterval(async () => {

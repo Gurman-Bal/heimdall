@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"heimdall/internal/auth"
@@ -560,24 +561,30 @@ func (s *Server) handleGenerateReport(w http.ResponseWriter, r *http.Request) {
 // -----------------------------------------------------------------------------
 
 func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(
-		r.Context(),
-		4*time.Second,
-	)
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	workerHealth := s.worker.Health(ctx)
-	llmHealth := s.worker.LLMHealth(ctx)
+	var workerHealth workerclient.HealthStatus
+	var llmHealth workerclient.LLMHealth
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		workerHealth = s.worker.Health(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		llmHealth = s.worker.LLMHealth(ctx)
+	}()
+	wg.Wait()
 
 	w.Header().Set("Content-Type", "application/json")
-
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		// If this handler is responding, the controller/API is alive.
 		"controller_state": "running",
-
-		"worker": workerHealth,
-		"llm":    llmHealth,
-
-		"self_container": s.selfContainer,
+		"worker":           workerHealth,
+		"llm":              llmHealth,
+		"self_container":   s.selfContainer,
 	})
 }

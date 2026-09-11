@@ -1,8 +1,10 @@
 import { getEvents } from "../api.js";
 import { eventRow } from "../components/eventRow.js";
+import { enableExpandableRows } from "../utils.js";
 
 let events = [];
 let currentFilter = "all";
+let expandableEnabled = false;
 
 const eventList = document.getElementById("event-list");
 
@@ -15,6 +17,11 @@ export async function initializeWatch() {
     events = await getEvents();
 
     initializeFilters();
+
+    if (!expandableEnabled) {
+        enableExpandableRows(eventList);
+        expandableEnabled = true;
+    }
 
     renderEvents();
 

@@ -1,4 +1,5 @@
 import { getActivity } from "../api.js";
+import { enableExpandableRows } from "../utils.js";
 
 const activityList =
     document.getElementById("activity-list");
@@ -7,6 +8,7 @@ let currentWindow = "1h";
 let initialized = false;
 
 let activityPoller = null;
+let expandableEnabled = false;
 
 export async function initializeActivity() {
 
@@ -14,11 +16,22 @@ export async function initializeActivity() {
 
     if (!initialized) {
         initializeFilters();
+        if (!expandableEnabled) {
+            enableExpandableRows(activityList);
+            expandableEnabled = true;
+        }
         initialized = true;
     }
 
     if (activityPoller) clearInterval(activityPoller);
     activityPoller = setInterval(loadActivity, 5000);
+}
+
+export function teardownActivity() {
+    if (activityPoller) {
+        clearInterval(activityPoller);
+        activityPoller = null;
+    }
 }
 
 function initializeFilters() {
