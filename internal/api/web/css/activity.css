@@ -15,3 +15,8 @@
 .activity-row.error .activity-level {
     color: var(--warning);
 }
+
+#activity-pause-btn.active {
+    border-color: var(--warning);
+    color: var(--warning);
+}

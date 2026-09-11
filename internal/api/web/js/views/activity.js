@@ -1,11 +1,13 @@
 import { getActivity } from "../api.js";
 
 const activityList = document.getElementById("activity-list");
+const pauseBtn = document.getElementById("activity-pause-btn");
 
 let currentWindow = "1h";
 let initialized = false;
 let activityPoller = null;
-let expandedKey = null; // identifies the expanded row across re-renders
+let expandedKey = null;
+let paused = false;
 
 export async function initializeActivity() {
 
@@ -14,11 +16,14 @@ export async function initializeActivity() {
     if (!initialized) {
         initializeFilters();
         activityList.addEventListener("click", handleRowClick);
+        pauseBtn.addEventListener("click", togglePause);
         initialized = true;
     }
 
     if (activityPoller) clearInterval(activityPoller);
-    activityPoller = setInterval(loadActivity, 5000);
+    activityPoller = setInterval(() => {
+        if (!paused) loadActivity();
+    }, 5000);
 }
 
 export function teardownActivity() {
@@ -28,10 +33,15 @@ export function teardownActivity() {
     }
 }
 
+function togglePause() {
+    paused = !paused;
+    pauseBtn.textContent = paused ? "RESUME" : "PAUSE";
+    pauseBtn.classList.toggle("active", paused);
+}
+
 function handleRowClick(e) {
     const row = e.target.closest(".activity-row");
     if (!row) return;
-
     const key = row.dataset.key;
     expandedKey = expandedKey === key ? null : key;
     applyExpandedState();
@@ -78,5 +88,5 @@ async function loadActivity() {
         })
         .join("");
 
-    applyExpandedState(); // re-apply after the DOM rebuild
+    applyExpandedState();
 }

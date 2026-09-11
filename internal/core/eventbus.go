@@ -47,7 +47,7 @@ func (b *EventBus) DroppedCount() int64 {
 // dropped event - a per-event log during exactly the burst that causes drops
 // would itself add to the overload.
 func (b *EventBus) reportDrops() {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 	var last int64
 	for range ticker.C {

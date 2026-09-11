@@ -147,7 +147,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	ch := s.bus.Subscribe(20)
+	ch := s.bus.Subscribe(5000)
 
 	for {
 		select {
